@@ -96,7 +96,9 @@
 
   table { width: 100%; border-collapse: collapse; font-size: 15px; }
   th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  td, th { overflow-wrap: anywhere; }
+  td, th { overflow-wrap: break-word; }
+  .card { overflow-x: auto; }
+  @media (max-width: 600px) { table { font-size: 13px; } th, td { padding: 8px 6px; } }
   th { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
   footer { padding: 40px 0 60px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
 </style>
@@ -112,7 +114,7 @@
     questions in plain English, with safety checks on every query.</p>
   <div style="margin-top:18px">
     <span class="pill">PySpark</span><span class="pill">Delta Lake</span><span class="pill">Medallion architecture</span><span class="pill">DuckDB</span>
-    <span class="pill">Airflow</span><span class="pill">LLM: OpenAI · Anthropic · Bedrock · mock</span>
+    <span class="pill">dbt</span><span class="pill">Airflow</span><span class="pill">LLM: OpenAI · Anthropic · Bedrock · mock</span>
     <span class="pill">Streamlit</span><span class="pill">Docker</span><span class="pill">GitHub Actions</span>
   </div>
 </header>
@@ -127,7 +129,7 @@
     <div class="card stat"><b>14</b><span>data-quality rules, all set in one YAML file</span></div>
     <div class="card stat"><b>98.0</b><span>data-quality health score out of 100</span></div>
     <div class="card stat"><b>2 of 2</b><span>planted revenue anomalies detected</span></div>
-    <div class="card stat"><b>53</b><span>automated tests (unit, security, end-to-end)</span></div>
+    <div class="card stat"><b>54</b><span>automated tests (unit, security, end-to-end)</span></div>
     <div class="card stat"><b>~1 min</b><span>full pipeline on a laptop; no cloud account or API key needed</span></div>
   </div>
 </section>
@@ -145,7 +147,7 @@
     <div class="arrow">→</div>
     <div class="stage s-gold" data-k="gold"><div class="tag">Gold</div><div class="n">3 marts</div><small>Daily revenue, customer RFM, product performance</small></div>
     <div class="arrow">→</div>
-    <div class="stage s-serve" data-k="serve"><div class="tag">Serving</div><div class="n">DuckDB</div><small>SQL warehouse, opened read-only</small></div>
+    <div class="stage s-serve" data-k="serve"><div class="tag">Serving</div><div class="n">DuckDB + dbt</div><small>Warehouse + tested dbt models, read-only</small></div>
     <div class="arrow">→</div>
     <div class="stage s-ai" data-k="ai"><div class="tag">AI layer</div><div class="n">3 tools</div><small>DQ report · anomaly alerts · ask your data</small></div>
   </div>
@@ -191,18 +193,46 @@
       </table>
       <p style="margin:10px 0 0;color:var(--muted)">Customer C00089 · 2,326 versions across 2,000 customers after the run, exactly one current row each.</p>
     </div>
-<pre>$ lakesense generate --append-days 7 --drift new-column
+<pre>$ lakesense generate --append-days 7 \
+      --drift new-column
 $ lakesense run
 bronze.orders  &lt;- 3826 rows from 7 new file(s)
 silver.orders: 3626 inserted, 72 updated (MERGE)
 silver.customer_history: 2287 versions
 
-$ lakesense generate --append-days 1 --drift missing-column
+$ lakesense generate --append-days 1 \
+      --drift missing-column
 $ lakesense run
 bronze.orders: REJECTED orders_2026-10-06_partner.csv
                - missing required ['unit_price']
 
 $ lakesense history silver.orders --version 0   # Delta time travel</pre>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>dbt analytics layer and the release gate</h2>
+  <p class="sub">Spark does the heavy lifting; dbt owns the SQL models that people query. Every warehouse release runs
+    <code>dbt build</code> first. If any model, test or contract fails, the new file is thrown away and yesterday's warehouse stays live.</p>
+  <div class="grid g4">
+    <div class="card stat"><b>3</b><span>contracted models: fact, dimension, mart</span></div>
+    <div class="card stat"><b>31</b><span>dbt checks on every release (30 pass, 1 warning)</span></div>
+    <div class="card stat"><b>0.00</b><span>difference between dbt and Spark revenue, checked every day</span></div>
+    <div class="card stat"><b>1</b><span>point-in-time join: orders counted under the segment the customer had <em>then</em></span></div>
+  </div>
+  <div class="detail">
+<pre>-- fct_order_lines.sql (excerpt)
+left join history h
+    on o.customer_id = h.customer_id
+   and o.order_ts &gt;= h.valid_from
+   and (o.order_ts &lt; h.valid_to
+        or h.valid_to is null)</pre>
+    <div class="card">
+      <h3>A dbt test that caught something</h3>
+      <p style="margin:0;color:var(--muted)">The first dbt run flagged 17 customers whose segment is <code>unknown</code>. They are there on purpose: the
+      pipeline's <code>segment_valid</code> rule is warn-level, so those rows are kept and reported. The dbt test now uses the same
+      <b>warn</b> severity, so both layers apply one policy instead of disagreeing.</p>
+    </div>
   </div>
 </section>
 
@@ -284,6 +314,7 @@ $ lakesense history silver.orders --version 0   # Delta time travel</pre>
       <tr><td>MERGE with "newer wins"</td><td>A late correction updates the original row; an old replay can never overwrite newer data.</td></tr>
       <tr><td>Contracts before ingestion</td><td>Headers are checked before Spark reads a file, so one broken file is rejected on its own instead of failing the whole batch.</td></tr>
       <tr><td>Delta Lake, Parquet fallback</td><td>Delta gives ACID MERGE, time travel and OPTIMIZE; the same code runs on plain Parquet, and CI tests both.</td></tr>
+      <tr><td>dbt as a release gate</td><td>Models, tests and contracts run against the new warehouse before it goes live; a failure never reaches users.</td></tr>
       <tr><td>Atomic warehouse publish</td><td>The DuckDB file is built under a temp name and swapped in, so the app never reads a half-built warehouse.</td></tr>
     </table>
   </div>
@@ -316,7 +347,7 @@ lakesense generate --append-days 7         # land a week of new files
 lakesense run                              # incremental: only the new files, MERGE + SCD2
 lakesense ask "top 5 customers by spend"   # plain English → guarded SQL → answer
 streamlit run app/streamlit_app.py         # dashboard on http://localhost:8501
-pytest                                     # 53 tests</pre>
+pytest                                     # 54 tests</pre>
   <p style="color:var(--muted)">Or run <code>docker compose up --build</code>, then open <code>localhost:8501</code>.</p>
 </section>
 
@@ -324,7 +355,7 @@ pytest                                     # 53 tests</pre>
   <h2>What comes next</h2>
   <div class="grid g3">
     <div class="card"><b>✓ Phase 2 · Done</b><br><span style="color:var(--muted)">Delta Lake, incremental loads with <code>MERGE</code>, SCD Type 2 customers, schema contracts</span></div>
-    <div class="card"><b>Phase 3 · Modern stack</b><br><span style="color:var(--muted)">Gold marts as dbt models, Snowflake target, data contracts in CI</span></div>
+    <div class="card"><b>Phase 3 · Modern stack</b><br><span style="color:var(--muted)">✓ dbt models, contracts and release gate · next: Snowflake target, dbt docs site</span></div>
     <div class="card"><b>Phase 4 · AWS</b><br><span style="color:var(--muted)">Terraform: S3, Glue, Athena, IAM, KMS; MWAA; Bedrock</span></div>
     <div class="card"><b>Phase 5 · Streaming</b><br><span style="color:var(--muted)">Kafka → Spark Structured Streaming, 5-minute revenue alerts</span></div>
     <div class="card"><b>Phase 6 · Stronger AI</b><br><span style="color:var(--muted)">Text-to-SQL accuracy test set, retrieval over the data catalog, AI-suggested DQ rules</span></div>
@@ -351,8 +382,8 @@ const STAGES = {
     l: ["daily_revenue: orders, customers, units, revenue, AOV, 7-day moving average", "customer_rfm: recency, frequency and monetary scores (ntile 1–5) plus a segment label",
         "product_performance: revenue, units, dense_rank within category, share of category revenue"],
     c: "rfm.withColumn(\"r_score\",\n    6 - F.ntile(5).over(Window.orderBy(\"recency_days\")))\n   .withColumn(\"f_score\",\n    F.ntile(5).over(Window.orderBy(\"frequency\")))" },
-  serve: { t: "Serving: a SQL warehouse", d: "Gold and silver tables are loaded into a DuckDB file, a free stand-in for Athena, Redshift or Snowflake.",
-    l: ["Reads the Delta log for the live file list, so files replaced by a MERGE are never double-counted", "Built under a temp name, then swapped in atomically", "Consumers (app, AI) open it read-only, with file and network access disabled", "The schema is read from information_schema to give the LLM context"],
+  serve: { t: "Serving: warehouse + dbt, released only if tests pass", d: "Gold and silver tables are loaded into a new DuckDB file. dbt then builds the analytics models on it and runs every test and contract. Only if all pass is the file swapped in.",
+    l: ["dbt models: fct_order_lines, dim_customer, mart_category_daily, with enforced contracts", "A reconciliation test checks dbt revenue equals Spark gold revenue for every day", "Reads the Delta log for the live file list, so files replaced by a MERGE are never double-counted", "Built under a temp name, then swapped in atomically", "Consumers (app, AI) open it read-only, with file and network access disabled", "The schema is read from information_schema to give the LLM context"],
     c: "con.execute(\"CREATE TABLE daily_revenue AS\n  SELECT * FROM read_parquet('gold/daily_revenue/**/*.parquet')\")\ntmp.replace(db_path)   # atomic swap" },
   ai: { t: "AI layer: explain, alert, answer", d: "Three tools behind one LLM interface. Choose the provider with LAKESENSE_LLM_PROVIDER.",
     l: ["mock (default, offline, predictable) · openai · anthropic · bedrock", "SDKs are optional and only imported when used",
