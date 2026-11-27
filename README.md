@@ -12,6 +12,7 @@ guarded text-to-SQL**.
 ![PySpark](https://img.shields.io/badge/PySpark-4.x-orange)
 ![Delta Lake](https://img.shields.io/badge/tables-Delta%20Lake-00ADD4)
 ![DuckDB](https://img.shields.io/badge/serving-DuckDB-yellow)
+![dbt](https://img.shields.io/badge/models-dbt-FF694B)
 ![LLM](https://img.shields.io/badge/LLM-OpenAI%20%7C%20Anthropic%20%7C%20Bedrock%20%7C%20mock-purple)
 
 > 📖 **Visual walkthrough:** [docs/how-it-works.html](docs/how-it-works.html) is an interactive page covering the
@@ -59,6 +60,7 @@ flowchart LR
 
     subgraph Serving
         W[(DuckDB warehouse<br/>read-only)]
+        M[dbt models<br/>fct / dim / marts<br/>tests + contracts]
     end
 
     subgraph AI["AI layer (pluggable LLM)"]
@@ -70,6 +72,7 @@ flowchart LR
     A1 & A2 & A3 --> C --> B --> S --> G --> W
     C -- breaking change --> R[(Rejected file<br/>+ drift report)]
     S --> H --> W
+    W --> M -- "tests pass → release" --> W
     S -- error rules --> Q
     S -- dq_results.json --> D
     W --> N
@@ -104,6 +107,12 @@ flowchart LR
   cascading failures (a quarantined product orphans its order lines).
 - **Window functions everywhere**: `row_number` dedup (latest record wins), 7-day moving average,
   `ntile` RFM scoring, `dense_rank` in-category ranking, revenue share by partition.
+- **dbt analytics layer** (`dbt/`): staging views, then `fct_order_lines`, `dim_customer` and
+  `mart_category_daily` with **enforced model contracts** (column names and types), 25+ data tests, and a
+  reconciliation test proving dbt's SQL revenue equals Spark's gold revenue to the cent. The fact table uses a
+  **point-in-time join** to the SCD2 history, so revenue by segment reflects the segment *at the time of the order*.
+- **Release gate**: every publish builds the warehouse in a temp file, runs `dbt build` against it, and swaps it
+  in only if every model, test and contract passes. A failing test leaves yesterday's warehouse in place.
 - **Partitioned tables** (`order_date`), AQE enabled.
 - **Atomic warehouse publish**: built to a temp file and swapped in, so readers never see half a warehouse.
 - **Orchestration**: a daily incremental Airflow DAG and a weekly Delta maintenance DAG, with retries
@@ -149,6 +158,7 @@ lakesense generate --append-days 7 --drift new-column
 lakesense run                             # bronze picks up new files, silver MERGEs, SCD2 updates
 lakesense drift-report                    # AI explanation of the schema change
 lakesense history silver.orders           # Delta table versions (time travel)
+lakesense ask "revenue by customer segment"   # answered from the dbt mart
 streamlit run app/streamlit_app.py        # dashboard at http://localhost:8501
 pytest                                    # run the test suite
 ```
@@ -199,6 +209,7 @@ lakesense-ai/
 │   │                             # text_to_sql.py, sql_guardrails.py, mock_responses.py
 │   └── cli.py                    # `lakesense` command
 ├── app/streamlit_app.py          # dashboard + "Ask your data"
+├── dbt/                          # dbt project: staging, fct/dim/marts, contracts, tests
 ├── dags/lakesense_dag.py         # Airflow orchestration
 ├── tests/                        # unit, security and end-to-end tests
 ├── docs/                         # architecture decisions and roadmap
@@ -227,9 +238,9 @@ cloneable; each piece maps one-to-one to AWS (S3 + Glue/EMR + Athena/Redshift + 
 
 ## Roadmap
 
-See [docs/ROADMAP.md](docs/ROADMAP.md). Done: Delta Lake, incremental MERGE loads, SCD2, schema contracts.
-Next: dbt models, Snowflake target, Terraform for AWS, Kafka streaming, a text-to-SQL evaluation set and RAG
-over a data catalog.
+See [docs/ROADMAP.md](docs/ROADMAP.md). Done: Delta Lake, incremental MERGE loads, SCD2, schema contracts,
+dbt models with contracts and a release gate. Next: Snowflake target, Terraform for AWS, Kafka streaming, a
+text-to-SQL evaluation set and RAG over a data catalog.
 
 ## Notes
 

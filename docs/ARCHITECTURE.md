@@ -74,6 +74,16 @@ incrementally maintaining them, and they are always consistent with silver.
 logically removed. The publish step asks the Delta log (via `deltalake`) for the live file list, so
 DuckDB never double-counts.
 
+**15. dbt on top, Spark underneath.** Spark does what it is good at (parsing messy files, MERGE into
+Delta, SCD2 at scale); dbt owns the SQL analytics layer, where readability, tests and contracts matter
+most. A reconciliation test checks that both layers agree on revenue for every day.
+
+**16. Point-in-time joins.** `fct_order_lines` joins each order to the customer version valid at
+`order_ts`, so "revenue by segment" counts an order under the segment the customer had *then*.
+
+**17. The warehouse release is gated.** Publish builds a new DuckDB file, runs `dbt build` against it
+(models, tests, contracts) in a separate process, and only then swaps it in atomically.
+
 ## Mapping to AWS
 
 | Local | AWS equivalent |
@@ -83,5 +93,6 @@ DuckDB never double-counts.
 | DuckDB | Athena (Glue Data Catalog) or Redshift Serverless |
 | Airflow DAG | Amazon MWAA |
 | `bedrock` provider | Amazon Bedrock (Converse API) |
+| dbt-duckdb | dbt-athena, dbt-redshift, dbt-snowflake or dbt-databricks (same models) |
 | `reports/` | S3 + SNS/Slack notification |
 | Quarantine | S3 prefix + Athena table for triage |

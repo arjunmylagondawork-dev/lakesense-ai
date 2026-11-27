@@ -1,0 +1,11 @@
+lakesense:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # The warehouse file being built by `lakesense run --layer publish`.
+      # dbt runs against it BEFORE it is swapped in, so a failing test or
+      # contract blocks the release of a broken warehouse.
+      path: "{{ env_var('LAKESENSE_DUCKDB_PATH', '../data/warehouse/lakesense.duckdb') }}"
+      schema: main
+      threads: 4

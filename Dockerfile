@@ -11,10 +11,11 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN pip install --no-cache-dir ".[app,openai,anthropic,bedrock]"
+RUN pip install --no-cache-dir ".[app,dbt,openai,anthropic,bedrock]"
 COPY config ./config
 COPY app ./app
 COPY dags ./dags
+COPY dbt ./dbt
 
 EXPOSE 8501
 # Build the lakehouse once, then serve the UI

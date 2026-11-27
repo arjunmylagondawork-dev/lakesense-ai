@@ -27,7 +27,8 @@ app = ["streamlit>=1.50", "altair>=5"]
 openai = ["openai>=1.40"]
 anthropic = ["anthropic>=0.40"]
 bedrock = ["boto3>=1.34"]
-dev = ["pytest>=8", "ruff>=0.5"]
+dbt = ["dbt-duckdb>=1.9"]
+dev = ["pytest>=8", "ruff>=0.5", "dbt-duckdb>=1.9"]
 
 [project.scripts]
 lakesense = "lakesense.cli:main"

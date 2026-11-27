@@ -16,10 +16,12 @@ Each phase is a self-contained upgrade that can be shipped as its own pull reque
 - [x] Source **schema contracts** + drift detection in bronze, with an LLM drift report and rename hints
 - [ ] Apache Iceberg as a third table format
 
-## Phase 3: Modern data stack
-- [ ] Rebuild gold marts as **dbt** models (`dbt-duckdb` locally, `dbt-snowflake` in cloud) with dbt tests and docs
-- [ ] **Snowflake** target: load silver via `COPY INTO`, compare with DuckDB results
-- [ ] Data contracts (YAML) checked in CI
+## Phase 3: Modern data stack (in progress)
+- [x] **dbt** analytics models (`dbt-duckdb`): staging, `fct_order_lines`, `dim_customer`, `mart_category_daily`
+- [x] Enforced **model contracts**, 25+ data tests, Spark-vs-dbt revenue reconciliation, release gate on publish
+- [x] Point-in-time join to SCD2 history in the fact table
+- [ ] **Snowflake** target via `dbt-snowflake`: load silver with `COPY INTO`, run the same dbt project
+- [ ] dbt docs site published with GitHub Pages
 
 ## Phase 4: Cloud deployment (AWS)
 - [ ] **Terraform**: S3 buckets, Glue jobs, Glue Catalog, Athena workgroup, IAM least-privilege roles, KMS

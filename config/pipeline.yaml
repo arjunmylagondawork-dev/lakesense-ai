@@ -79,7 +79,13 @@ anomaly:
   z_threshold: 3.5           # robust z-score (median / MAD) threshold
   weekday_seasonality: true  # adjust for busy weekends before scoring
 
+dbt:
+  enabled: true              # build + test the dbt models (dbt/) before every warehouse release
+  required: false            # true: fail if dbt is not installed; false: skip with a warning
+  project_dir: dbt
+
 text_to_sql:
   max_rows: 200
   max_retries: 2             # self-correction attempts when generated SQL fails
-  allowed_tables: [daily_revenue, customer_rfm, product_performance, orders, customers, products, customer_history]
+  allowed_tables: [daily_revenue, customer_rfm, product_performance, orders, customers, products, customer_history,
+                   fct_order_lines, dim_customer, mart_category_daily]

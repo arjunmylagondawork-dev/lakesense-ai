@@ -178,6 +178,12 @@ def text_to_sql(ctx: dict[str, Any]) -> str:
         return ("SELECT customer_id, COUNT(*) AS versions, MIN(valid_from) AS first_seen, "
                 "MAX(valid_from) AS last_change FROM customer_history GROUP BY customer_id "
                 f"HAVING COUNT(*) > 1 ORDER BY versions DESC, last_change DESC LIMIT {n}")
+    if "segment" in q and any(w in q for w in ("revenue", "sales")):
+        return ("SELECT customer_segment, SUM(revenue) AS revenue, SUM(units) AS units "
+                "FROM mart_category_daily GROUP BY customer_segment ORDER BY revenue DESC")
+    if "return rate" in q or "returns" in q:
+        return (f"SELECT customer_id, segment, lifetime_orders, return_rate FROM dim_customer "
+                f"WHERE lifetime_orders >= 5 ORDER BY return_rate DESC LIMIT {n}")
     if "customer" in q and any(w in q for w in ("top", "best", "highest", "most")):
         return (f"SELECT customer_id, name, country, frequency, monetary, rfm_segment "
                 f"FROM customer_rfm ORDER BY monetary DESC LIMIT {n}")

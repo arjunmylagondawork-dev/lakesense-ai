@@ -1,0 +1,28 @@
+version: 2
+
+sources:
+  - name: lakehouse
+    description: Silver and gold Delta tables published into the DuckDB warehouse by the Spark pipeline.
+    schema: main
+    tables:
+      - name: orders
+        description: Validated order lines (silver), upserted with MERGE.
+        columns:
+          - name: order_line_id
+            data_tests: [unique, not_null]
+      - name: customers
+        description: Latest version of each valid customer (silver).
+        columns:
+          - name: customer_id
+            data_tests: [unique, not_null]
+      - name: products
+        columns:
+          - name: product_id
+            data_tests: [unique, not_null]
+      - name: customer_history
+        description: SCD Type 2 history of customer segment, country and email.
+        columns:
+          - name: customer_sk
+            data_tests: [unique, not_null]
+      - name: daily_revenue
+        description: Gold mart built by Spark; used to reconcile the dbt models.
