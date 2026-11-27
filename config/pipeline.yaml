@@ -1,0 +1,65 @@
+# LakeSense AI - pipeline configuration
+# All paths are relative to the project root unless absolute.
+
+paths:
+  raw: data/raw
+  lake: data/lake            # bronze/ silver/ gold/ quarantine/ live under here
+  warehouse: data/warehouse/lakesense.duckdb
+  reports: reports
+
+generator:
+  seed: 42
+  n_customers: 2000
+  n_products: 150
+  days: 120
+  start_date: "2026-06-01"
+  avg_lines_per_day: 400
+  dirty_rate: 0.03           # share of records that get a data-quality defect
+  # Injected business anomalies the AI layer should detect
+  anomalies:
+    - { day_offset: 45, kind: spike, factor: 4.0 }   # e.g. flash sale / bulk fraud
+    - { day_offset: 88, kind: drop,  factor: 0.15 }  # e.g. payment-gateway outage
+
+spark:
+  app_name: lakesense-ai
+  master: "local[*]"
+  shuffle_partitions: 8
+
+# ---------------------------------------------------------------------------
+# Data-quality rules applied while promoting bronze -> silver.
+# Records violating ANY "error" rule are routed to quarantine with the list of
+# failed rules; "warn" rules are reported but the record is kept.
+# Supported types: not_null, range, accepted_values, regex, not_future,
+#                  referential (FK check against another silver table)
+# ---------------------------------------------------------------------------
+quality:
+  customers:
+    - { name: customer_id_not_null, type: not_null, column: customer_id, severity: error }
+    - { name: email_format, type: regex, column: email, pattern: '^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$', severity: warn }
+    - { name: segment_valid, type: accepted_values, column: segment, values: [consumer, smb, enterprise], severity: warn }
+    - { name: signup_not_future, type: not_future, column: signup_date, severity: error }
+
+  products:
+    - { name: product_id_not_null, type: not_null, column: product_id, severity: error }
+    - { name: list_price_positive, type: range, column: list_price, min: 0.01, severity: error }
+
+  orders:
+    - { name: order_line_id_not_null, type: not_null, column: order_line_id, severity: error }
+    - { name: customer_id_not_null, type: not_null, column: customer_id, severity: error }
+    - { name: quantity_positive, type: range, column: quantity, min: 1, max: 1000, severity: error }
+    - { name: unit_price_positive, type: range, column: unit_price, min: 0.01, severity: error }
+    - { name: status_valid, type: accepted_values, column: status, values: [placed, shipped, delivered, cancelled, returned], severity: error }
+    - { name: order_ts_not_future, type: not_future, column: order_ts, severity: error }
+    - { name: product_exists, type: referential, column: product_id, ref_table: products, ref_column: product_id, severity: error }
+    - { name: customer_exists, type: referential, column: customer_id, ref_table: customers, ref_column: customer_id, severity: warn }
+
+anomaly:
+  metric: revenue
+  window_days: 14
+  z_threshold: 3.5           # robust z-score (median / MAD) threshold
+  weekday_seasonality: true  # adjust for busy weekends before scoring
+
+text_to_sql:
+  max_rows: 200
+  max_retries: 2             # self-correction attempts when generated SQL fails
+  allowed_tables: [daily_revenue, customer_rfm, product_performance, orders, customers, products]

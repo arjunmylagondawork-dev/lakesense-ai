@@ -1,0 +1,193 @@
+[
+  {
+    "table": "customers",
+    "rule": "customer_id_not_null",
+    "type": "not_null",
+    "column": "customer_id",
+    "severity": "error",
+    "total_rows": 1986,
+    "failed_rows": 1,
+    "sample_values": [
+      "None"
+    ],
+    "pass_rate": 0.9995
+  },
+  {
+    "table": "customers",
+    "rule": "email_format",
+    "type": "regex",
+    "column": "email",
+    "severity": "warn",
+    "total_rows": 1986,
+    "failed_rows": 24,
+    "sample_values": [
+      "olivia.smith1462_at_example.com",
+      "noah.nair795_at_example.com",
+      "arjun.shah667_at_example.com",
+      "emma.brown1207_at_example.com",
+      "fatima.smith471_at_example.com"
+    ],
+    "pass_rate": 0.98792
+  },
+  {
+    "table": "customers",
+    "rule": "segment_valid",
+    "type": "accepted_values",
+    "column": "segment",
+    "severity": "warn",
+    "total_rows": 1986,
+    "failed_rows": 20,
+    "sample_values": [
+      "unknown"
+    ],
+    "pass_rate": 0.98993
+  },
+  {
+    "table": "customers",
+    "rule": "signup_not_future",
+    "type": "not_future",
+    "column": "signup_date",
+    "severity": "error",
+    "total_rows": 1986,
+    "failed_rows": 13,
+    "sample_values": [
+      "2099-01-01"
+    ],
+    "pass_rate": 0.99345
+  },
+  {
+    "table": "products",
+    "rule": "product_id_not_null",
+    "type": "not_null",
+    "column": "product_id",
+    "severity": "error",
+    "total_rows": 150,
+    "failed_rows": 0,
+    "sample_values": [],
+    "pass_rate": 1.0
+  },
+  {
+    "table": "products",
+    "rule": "list_price_positive",
+    "type": "range",
+    "column": "list_price",
+    "severity": "error",
+    "total_rows": 150,
+    "failed_rows": 1,
+    "sample_values": [
+      "-1496.11"
+    ],
+    "pass_rate": 0.99333
+  },
+  {
+    "table": "orders",
+    "rule": "order_line_id_not_null",
+    "type": "not_null",
+    "column": "order_line_id",
+    "severity": "error",
+    "total_rows": 58018,
+    "failed_rows": 0,
+    "sample_values": [],
+    "pass_rate": 1.0
+  },
+  {
+    "table": "orders",
+    "rule": "customer_id_not_null",
+    "type": "not_null",
+    "column": "customer_id",
+    "severity": "error",
+    "total_rows": 58018,
+    "failed_rows": 206,
+    "sample_values": [
+      "None"
+    ],
+    "pass_rate": 0.99645
+  },
+  {
+    "table": "orders",
+    "rule": "quantity_positive",
+    "type": "range",
+    "column": "quantity",
+    "severity": "error",
+    "total_rows": 58018,
+    "failed_rows": 443,
+    "sample_values": [
+      "-5",
+      "-2",
+      "-1",
+      "-3",
+      "None"
+    ],
+    "pass_rate": 0.99236
+  },
+  {
+    "table": "orders",
+    "rule": "unit_price_positive",
+    "type": "range",
+    "column": "unit_price",
+    "severity": "error",
+    "total_rows": 58018,
+    "failed_rows": 223,
+    "sample_values": [
+      "0.00"
+    ],
+    "pass_rate": 0.99616
+  },
+  {
+    "table": "orders",
+    "rule": "status_valid",
+    "type": "accepted_values",
+    "column": "status",
+    "severity": "error",
+    "total_rows": 58018,
+    "failed_rows": 199,
+    "sample_values": [
+      "shipped??"
+    ],
+    "pass_rate": 0.99657
+  },
+  {
+    "table": "orders",
+    "rule": "order_ts_not_future",
+    "type": "not_future",
+    "column": "order_ts",
+    "severity": "error",
+    "total_rows": 58018,
+    "failed_rows": 218,
+    "sample_values": [
+      "2099-12-31 23:59:59"
+    ],
+    "pass_rate": 0.99624
+  },
+  {
+    "table": "orders",
+    "rule": "product_exists",
+    "type": "referential",
+    "column": "product_id",
+    "severity": "error",
+    "total_rows": 58018,
+    "failed_rows": 581,
+    "sample_values": [
+      "P9999",
+      "P0132"
+    ],
+    "pass_rate": 0.98999
+  },
+  {
+    "table": "orders",
+    "rule": "customer_exists",
+    "type": "referential",
+    "column": "customer_id",
+    "severity": "warn",
+    "total_rows": 58018,
+    "failed_rows": 371,
+    "sample_values": [
+      "C01365",
+      "C01071",
+      "C00681",
+      "C00144",
+      "C00698"
+    ],
+    "pass_rate": 0.99361
+  }
+]
