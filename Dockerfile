@@ -1,11 +1,11 @@
 FROM python:3.11-slim
 
-# PySpark needs a JVM
+# PySpark needs a JVM. default-jre-headless works on any Debian release and on
+# both amd64 and arm64 (Apple Silicon); Spark finds `java` on the PATH.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends openjdk-17-jre-headless procps \
+ && apt-get install -y --no-install-recommends default-jre-headless procps \
  && rm -rf /var/lib/apt/lists/*
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 \
-    PYTHONUNBUFFERED=1 \
+ENV PYTHONUNBUFFERED=1 \
     LAKESENSE_HOME=/app
 
 WORKDIR /app

@@ -15,7 +15,8 @@ def get_spark(settings: Settings) -> SparkSession:
         .config("spark.sql.shuffle.partitions", cfg.get("shuffle_partitions", 8))
         .config("spark.sql.session.timeZone", "UTC")
         .config("spark.sql.adaptive.enabled", "true")
-        .config("spark.sql.sources.partitionOverwriteMode", "dynamic")
+        # full rebuilds: static overwrite replaces the whole table, so no stale partitions survive
+        .config("spark.sql.sources.partitionOverwriteMode", "static")
         .config("spark.ui.showConsoleProgress", "false")
         .getOrCreate()
     )

@@ -10,7 +10,20 @@ from typing import Any
 
 import yaml
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+def _find_project_root() -> Path:
+    """Project root = LAKESENSE_HOME, else the source checkout (editable install),
+    else the current working directory (regular `pip install .`, Docker, Airflow)."""
+    env = os.getenv("LAKESENSE_HOME")
+    if env:
+        return Path(env).resolve()
+    checkout = Path(__file__).resolve().parents[2]
+    if (checkout / "config" / "pipeline.yaml").exists():
+        return checkout
+    return Path.cwd()
+
+
+PROJECT_ROOT = _find_project_root()
 DEFAULT_CONFIG = PROJECT_ROOT / "config" / "pipeline.yaml"
 
 
@@ -42,7 +55,12 @@ def _resolve(p: str, root: Path) -> Path:
 
 def load_settings(config_path: str | Path | None = None, root: Path | None = None) -> Settings:
     config_path = Path(config_path or os.getenv("LAKESENSE_CONFIG", DEFAULT_CONFIG))
-    root = Path(root or os.getenv("LAKESENSE_HOME", PROJECT_ROOT))
+    root = Path(root or PROJECT_ROOT)
+    if not config_path.exists():
+        raise FileNotFoundError(
+            f"Config not found at {config_path}. Run from the project folder, "
+            "or set LAKESENSE_HOME / LAKESENSE_CONFIG."
+        )
     with open(config_path, encoding="utf-8") as fh:
         raw = yaml.safe_load(fh)
     p = raw["paths"]

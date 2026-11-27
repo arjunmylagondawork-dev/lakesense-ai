@@ -40,8 +40,15 @@ def _blank_to_null(col: str):
 
 
 def dedupe_latest(df: DataFrame, keys: list[str], order_col: str) -> DataFrame:
+    """Keep the latest row per key. Rows with a NULL key are NOT collapsed into one
+    (they would share a window partition); they pass through so the not_null rule
+    quarantines every one of them with a reason."""
+    has_key = F.lit(True)
+    for k in keys:
+        has_key = has_key & F.col(k).isNotNull()
     w = Window.partitionBy(*keys).orderBy(F.col(order_col).desc_nulls_last())
-    return df.withColumn("_rn", F.row_number().over(w)).filter("_rn = 1").drop("_rn")
+    keyed = df.filter(has_key).withColumn("_rn", F.row_number().over(w)).filter("_rn = 1").drop("_rn")
+    return keyed.unionByName(df.filter(~has_key))
 
 
 def clean_customers(df: DataFrame) -> DataFrame:
@@ -117,7 +124,8 @@ def run_silver(spark: SparkSession, settings: Settings) -> list[RuleResult]:
         bad.write.mode("overwrite").parquet(str(lake.layer("quarantine") / table))
 
         silver_dfs[table] = spark.read.parquet(str(lake.layer("silver") / table))
-        log.info("silver.%s: %d valid, %d quarantined", table, silver_dfs[table].count(), bad.count())
+        n_bad = spark.read.parquet(str(lake.layer("quarantine") / table)).count()
+        log.info("silver.%s: %d valid, %d quarantined", table, silver_dfs[table].count(), n_bad)
         checked.unpersist()
 
     lake.reports.mkdir(parents=True, exist_ok=True)

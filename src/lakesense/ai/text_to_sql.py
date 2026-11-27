@@ -19,12 +19,13 @@ import pandas as pd
 
 from lakesense.ai import prompts
 from lakesense.ai.llm import LLMClient, get_llm
-from lakesense.ai.sql_guardrails import UnsafeSQLError, validate_sql
+from lakesense.ai.sql_guardrails import InvalidSQLError, UnsafeSQLError, validate_sql
 from lakesense.config import Settings
 from lakesense.logging_utils import get_logger
 from lakesense.serving.warehouse import connect_readonly, schema_description
 
 log = get_logger(__name__)
+CANNOT_ANSWER = "CANNOT_ANSWER"
 
 
 @dataclass
@@ -67,40 +68,47 @@ class TextToSQLAgent:
     def ask(self, question: str) -> Answer:
         start = time.perf_counter()
         history: list[dict[str, Any]] = []
-        sql, error = None, None
+
+        def finish(sql, data, summary, error=None) -> Answer:
+            ans = Answer(question, sql, data, summary, len(history), error=error, history=history,
+                         latency_ms=int((time.perf_counter() - start) * 1000))
+            self._audit(ans)
+            return ans
+
+        prev_sql, error = None, None
         for attempt in range(1, self.max_retries + 2):
-            raw = self._generate(question, sql, error) if attempt > 1 else self._generate(question)
+            raw = self._generate(question, prev_sql, error)
+            if raw.strip().upper().startswith(CANNOT_ANSWER):
+                history.append({"attempt": attempt, "sql": None, "status": "unanswerable"})
+                return finish(None, None, "This question can't be answered from the available tables.",
+                              error="Not answerable from the warehouse tables")
             try:
                 sql = validate_sql(raw, self.allowed, self.max_rows)
-                df = self.con.execute(sql).fetchdf()
-                summary = self.llm.complete(
-                    prompts.SUMMARY_SYSTEM,
-                    f"Question: {question}\nColumns: {list(df.columns)}\nRows:\n{df.head(20).to_string()}",
-                    task="summarize_result",
-                    context={"columns": list(df.columns), "rows": df.head(20).values.tolist()},
-                )
-                history.append({"attempt": attempt, "sql": sql, "status": "ok"})
-                ans = Answer(question, sql, df, summary, attempt, history=history,
-                             latency_ms=int((time.perf_counter() - start) * 1000))
-                self._audit(ans)
-                return ans
             except UnsafeSQLError as e:
-                # unsafe output is never retried into execution: fail closed
+                # unsafe output is never retried and never executed: fail closed
                 history.append({"attempt": attempt, "sql": raw, "status": "blocked", "error": str(e)})
-                ans = Answer(question, raw, None, "Query blocked by guardrails.", attempt,
-                             error=f"Blocked: {e}", history=history,
-                             latency_ms=int((time.perf_counter() - start) * 1000))
-                self._audit(ans)
-                return ans
+                return finish(raw, None, "Query blocked by guardrails.", error=f"Blocked: {e}")
+            except InvalidSQLError as e:
+                prev_sql, error = raw, str(e)          # malformed: let the model fix it
+                history.append({"attempt": attempt, "sql": raw, "status": "invalid", "error": error})
+                log.warning("Attempt %d produced invalid SQL: %s", attempt, error)
+                continue
+            try:
+                df = self.con.cursor().execute(sql).fetchdf()   # cursor: thread-safe for the web app
             except duckdb.Error as e:
-                error = str(e).splitlines()[0]
-                sql = sql or raw
+                prev_sql, error = sql, str(e).splitlines()[0]
                 history.append({"attempt": attempt, "sql": sql, "status": "error", "error": error})
                 log.warning("Attempt %d failed: %s", attempt, error)
-        ans = Answer(question, sql, None, "Could not answer the question.", len(history),
-                     error=error, history=history, latency_ms=int((time.perf_counter() - start) * 1000))
-        self._audit(ans)
-        return ans
+                continue
+            summary = self.llm.complete(
+                prompts.SUMMARY_SYSTEM,
+                f"Question: {question}\nColumns: {list(df.columns)}\nRows:\n{df.head(20).to_string()}",
+                task="summarize_result",
+                context={"columns": list(df.columns), "rows": df.head(20).values.tolist()},
+            )
+            history.append({"attempt": attempt, "sql": sql, "status": "ok"})
+            return finish(sql, df, summary)
+        return finish(prev_sql, None, "Could not answer the question.", error=error)
 
     def _audit(self, ans: Answer) -> None:
         path = self.settings.paths.reports / "query_log.jsonl"

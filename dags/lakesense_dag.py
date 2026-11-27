@@ -4,6 +4,8 @@ generate -> bronze -> silver -> gold -> publish -> [dq_report, anomalies]
 
 Each task calls the `lakesense` CLI, so the same code runs locally, in CI and in
 Airflow (or MWAA). On AWS, swap the BashOperators for EmrServerless / Glue operators.
+Note: `generate_raw` stands in for real source systems landing files. In production
+you would drop it and point bronze at the landing bucket for the run date ({{ ds }}).
 """
 
 from __future__ import annotations
@@ -11,7 +13,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from airflow import DAG
-from airflow.operators.bash import BashOperator
+
+try:  # Airflow 3
+    from airflow.providers.standard.operators.bash import BashOperator
+except ImportError:  # Airflow 2.x
+    from airflow.operators.bash import BashOperator
 
 DEFAULT_ARGS = {
     "owner": "data-engineering",

@@ -11,6 +11,10 @@ and uses an LLM to **explain data-quality incidents**, **narrate anomalies** and
 ![DuckDB](https://img.shields.io/badge/serving-DuckDB-yellow)
 ![LLM](https://img.shields.io/badge/LLM-OpenAI%20%7C%20Anthropic%20%7C%20Bedrock%20%7C%20mock-purple)
 
+> 📖 **Visual walkthrough:** [docs/how-it-works.html](docs/how-it-works.html) is an interactive page covering the
+> pipeline stages, the journey of real bad records, anomaly results and a SQL guardrail playground.
+> To view it live, enable GitHub Pages (Settings → Pages → `main` / `docs`) or open the file in a browser.
+
 > Runs fully offline in about 2 minutes: no cloud account and no API key needed (a deterministic
 > mock LLM is built in). Plug in OpenAI, Anthropic or Amazon Bedrock with one environment variable.
 
@@ -81,8 +85,8 @@ flowchart LR
 - **Partitioned Parquet** (`order_date`), dynamic partition overwrite, AQE enabled.
 - **Atomic warehouse publish**: built to a temp file and swapped in, so readers never see half a warehouse.
 - **Orchestration**: Airflow DAG with retries and exponential backoff; every task calls the same CLI.
-- **Tested**: 30+ pytest tests (unit tests for every transformation and rule type, a guardrail
-  security suite, and a full end-to-end run), plus ruff lint and GitHub Actions CI.
+- **Tested**: 40+ pytest tests (every cleaning function, every gold mart and every rule type, a guardrail
+  security suite, the AI retry paths, and a full end-to-end run), plus ruff lint and GitHub Actions CI.
 
 ## AI highlights
 
@@ -90,9 +94,12 @@ flowchart LR
   SDKs are optional, lazily imported dependencies.
 - **LLM output is treated as untrusted input.** Generated SQL is parsed with `sqlglot` and must be a
   single `SELECT`; DDL/DML, `ATTACH`, `COPY`, `PRAGMA`, file-reading functions and non-whitelisted
-  tables are rejected; a `LIMIT` is enforced; execution uses a **read-only** connection.
-- **Self-correction loop**: when SQL fails, the database error is fed back to the model (up to N retries).
-  Unsafe SQL is *never* retried; it fails closed.
+  tables and schema-qualified names (`other_db.main.x`) are rejected; any `LIMIT` that is not a plain
+  integer (`LIMIT 5+1000000`, `LIMIT 100 PERCENT`) is replaced. Execution uses a **read-only** DuckDB
+  connection with **file and network access disabled**, so even SQL that slipped past the parser can't read files.
+- **Self-correction loop**: malformed SQL and database errors are fed back to the model (up to N retries).
+  Unsafe SQL is *never* retried; it fails closed. Questions the tables can't answer get a clear
+  "can't answer" instead of a made-up query.
 - **Statistics detect, the LLM explains**: anomalies are found with a weekday-adjusted robust z-score
   (no hallucinated alerts); the LLM only writes the explanation, using a per-category breakdown as grounding.
 - **Auditability**: every question, generated SQL, outcome, attempt count and latency is logged to
@@ -109,6 +116,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[app,dev]"
 
 lakesense all                             # generate data, run every layer, write AI reports
+                                          # (run from the project folder, or set LAKESENSE_HOME)
 lakesense ask "top 5 customers by spend"  # natural language -> SQL -> answer
 streamlit run app/streamlit_app.py        # dashboard at http://localhost:8501
 pytest                                    # run the test suite
@@ -119,10 +127,9 @@ Or with Docker: `docker compose up --build`, then open http://localhost:8501.
 ### Use a real LLM
 
 ```bash
-cp .env.example .env
 pip install -e ".[openai]"      # or .[anthropic] / .[bedrock]
-export LAKESENSE_LLM_PROVIDER=openai OPENAI_API_KEY=sk-...
-lakesense dq-report
+cp .env.example .env            # set LAKESENSE_LLM_PROVIDER=openai and OPENAI_API_KEY=...
+lakesense dq-report             # .env is loaded automatically (real env vars take priority)
 ```
 
 ## Example output

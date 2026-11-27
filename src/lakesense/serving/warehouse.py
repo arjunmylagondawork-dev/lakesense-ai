@@ -40,8 +40,14 @@ def publish(settings: Settings) -> Path:
     return db_path
 
 
+# Consumers get a read-only connection with file-system / network access disabled,
+# so even SQL that slipped past the guardrails cannot read files or write anything.
+# All consumers must use this same config (DuckDB refuses mixed configs per process).
+READONLY_CONFIG = {"enable_external_access": False}
+
+
 def connect_readonly(settings: Settings) -> duckdb.DuckDBPyConnection:
-    return duckdb.connect(str(settings.paths.warehouse), read_only=True)
+    return duckdb.connect(str(settings.paths.warehouse), read_only=True, config=dict(READONLY_CONFIG))
 
 
 def schema_description(con: duckdb.DuckDBPyConnection, tables: list[str]) -> str:

@@ -7,7 +7,7 @@ Each phase is a self-contained upgrade that can be shipped as its own pull reque
 - Config-driven DQ engine, AI incident report
 - Weekday-adjusted anomaly detection + AI narrative
 - Guarded text-to-SQL with self-correction and audit log
-- Streamlit app, Airflow DAG, Docker, CI, 30+ tests
+- Streamlit app, Airflow DAG, Docker, CI, 40+ tests
 
 ## Phase 2: Production table formats & incremental loads
 - [ ] Replace Parquet with **Delta Lake or Apache Iceberg** (ACID, time travel, schema evolution)

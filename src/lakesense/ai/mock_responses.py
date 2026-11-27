@@ -129,8 +129,17 @@ def _n(q: str, default: int = 10) -> int:
 REVENUE = "status IN ('placed','shipped','delivered')"
 
 
+DESTRUCTIVE = ("drop", "delete", "update", "insert", "truncate", "alter", "create")
+
+
 def text_to_sql(ctx: dict[str, Any]) -> str:
     q = ctx.get("question", "").lower()
+    if any(re.search(rf"\b{w}\b", q) for w in DESTRUCTIVE):
+        return "CANNOT_ANSWER"
+    day = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", q)
+    if day and any(w in q for w in ("revenue", "sales", "orders")):
+        return (f"SELECT order_date, revenue, orders, customers, avg_order_value "
+                f"FROM daily_revenue WHERE order_date = DATE '{day.group(1)}'")
     n = _n(q)
     if "customer" in q and any(w in q for w in ("top", "best", "highest", "most")):
         return (f"SELECT customer_id, name, country, frequency, monetary, rfm_segment "
@@ -166,10 +175,10 @@ def text_to_sql(ctx: dict[str, Any]) -> str:
         return "SELECT COUNT(*) AS customers FROM customers"
     if "total revenue" in q or q.strip() in ("revenue", "total sales"):
         return "SELECT SUM(revenue) AS total_revenue, SUM(orders) AS total_orders FROM daily_revenue"
-    if any(w in q for w in ("daily", "trend", "per day", "each day", "revenue")):
+    if any(w in q for w in ("daily", "trend", "per day", "each day", "revenue", "last 7", "last week")):
         return ("SELECT order_date, revenue, orders, revenue_7d_avg FROM daily_revenue "
                 "ORDER BY order_date")
-    return ("SELECT order_date, revenue, orders FROM daily_revenue ORDER BY order_date DESC LIMIT 7")
+    return "CANNOT_ANSWER"   # the mock only knows common question shapes; a real LLM covers the rest
 
 
 def summarize_result(ctx: dict[str, Any]) -> str:

@@ -59,15 +59,19 @@ def _category_breakdown(con: duckdb.DuckDBPyConnection, day, window: int) -> lis
       WHERE o.status IN ('placed','shipped','delivered')
     ),
     day AS (SELECT category, SUM(line_amount) AS rev FROM lines WHERE order_date = ? GROUP BY 1),
-    base AS (
-      SELECT category, SUM(line_amount) / ? AS rev FROM lines
-      WHERE order_date >= CAST(? AS DATE) - INTERVAL (?) DAY AND order_date < ? GROUP BY 1
+    hist AS (
+      SELECT * FROM lines WHERE order_date >= CAST(? AS DATE) - INTERVAL (?) DAY AND order_date < ?
+    ),
+    base AS (   -- average per day over the days that actually exist in the window
+      SELECT category,
+             SUM(line_amount) / (SELECT GREATEST(COUNT(DISTINCT order_date), 1) FROM hist) AS rev
+      FROM hist GROUP BY 1
     )
     SELECT b.category, COALESCE(d.rev, 0) AS day_revenue, b.rev AS baseline,
            COALESCE(d.rev, 0) / NULLIF(b.rev, 0) AS ratio
     FROM base b LEFT JOIN day d USING (category) ORDER BY ratio DESC
     """
-    df = con.execute(q, [day, window, day, window, day]).fetchdf()
+    df = con.execute(q, [day, day, window, day]).fetchdf()
     return [{"category": r.category, "day_revenue": round(float(r.day_revenue), 2),
              "baseline": round(float(r.baseline), 2), "ratio": round(float(r.ratio or 0), 2)}
             for r in df.itertuples()]

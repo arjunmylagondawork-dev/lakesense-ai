@@ -28,6 +28,9 @@ count, and every rejected row carries its reasons. Rules live in YAML, so adding
 **4. Error vs. warn severity.** Blocking every imperfection would throw away revenue (an order
 whose customer record is late is still a real order). `warn` rules are reported and scored, but the row flows on.
 
+**4b. NULL keys are never de-duplicated away.** Deduplication only applies to rows that have a key;
+rows with a NULL key pass through so the `not_null` rule quarantines each one with a reason.
+
 **5. Dimensions before facts.** Referential checks run against the *silver* dimension, so a
 dimension row that was itself quarantined shows up as orphaned facts. The DQ report calls out
 this cascade explicitly.
@@ -39,7 +42,8 @@ breakdown and only writes the explanation.
 
 **7. LLM output is untrusted.** Text-to-SQL output goes through `sqlglot` parsing, a single-statement
 rule, an AST walk that rejects DDL/DML/admin nodes and file-reading functions, a table whitelist (CTEs
-allowed), and a forced `LIMIT`, and it runs on a read-only connection. Unsafe SQL is never retried.
+allowed, no other schemas or catalogs), and a forced plain-integer `LIMIT`. It runs on a read-only
+connection with external access disabled. Malformed SQL is retried with the parser error; unsafe SQL never is.
 
 **8. Mock provider by default.** A reviewer can clone and run everything in minutes, and CI tests the
 whole AI flow deterministically. Real providers sit behind the same `LLMClient.complete()` interface.

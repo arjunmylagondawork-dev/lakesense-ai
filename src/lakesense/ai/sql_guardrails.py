@@ -6,7 +6,8 @@ LLM output is untrusted input. Before anything runs we:
   3. reject any DDL/DML/admin node anywhere in the tree,
   4. allow only whitelisted tables (CTE names are fine),
   5. enforce a row LIMIT.
-Execution additionally uses a read-only DuckDB connection (defence in depth).
+Execution additionally uses a read-only DuckDB connection with external (file/network)
+access disabled - defence in depth.
 """
 
 from __future__ import annotations
@@ -17,8 +18,19 @@ import sqlglot
 from sqlglot import exp
 
 
-class UnsafeSQLError(ValueError):
-    pass
+class GuardrailError(ValueError):
+    """Base class: the SQL was rejected and must not run."""
+
+
+class InvalidSQLError(GuardrailError):
+    """SQL is malformed. Safe to send the message back to the LLM and retry."""
+
+
+class UnsafeSQLError(GuardrailError):
+    """SQL tries something forbidden. Fail closed: never retried, never executed."""
+
+
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
 FORBIDDEN = tuple(
@@ -37,12 +49,22 @@ def strip_fences(sql: str) -> str:
     return sql.strip().rstrip(";").strip()
 
 
+def _safe_limit(limit: exp.Expression | None) -> int | None:
+    """Return the LIMIT value only if it is a plain integer literal (no expressions, no PERCENT)."""
+    if limit is None or any(v for k, v in limit.args.items() if k != "expression"):
+        return None
+    value = limit.expression
+    if isinstance(value, exp.Literal) and not value.is_string and value.name.isdigit():
+        return int(value.name)
+    return None
+
+
 def validate_sql(sql: str, allowed_tables: list[str], max_rows: int = 200) -> str:
     sql = strip_fences(sql)
     try:
         statements = [s for s in sqlglot.parse(sql, read="duckdb") if s is not None]
-    except sqlglot.errors.ParseError as e:
-        raise UnsafeSQLError(f"SQL does not parse: {e}") from e
+    except sqlglot.errors.SqlglotError as e:          # ParseError, TokenError, ...
+        raise InvalidSQLError(f"SQL does not parse: {ANSI.sub('', str(e)).splitlines()[0]}") from e
     if len(statements) != 1:
         raise UnsafeSQLError(f"Expected exactly one statement, got {len(statements)}")
     tree = statements[0]
@@ -53,10 +75,9 @@ def validate_sql(sql: str, allowed_tables: list[str], max_rows: int = 200) -> st
         if isinstance(node, FORBIDDEN):
             raise UnsafeSQLError(f"Forbidden operation: {type(node).__name__}")
         if isinstance(node, exp.Func):
-            fname = (node.sql_name() or "").lower()
-            anon = node.name.lower() if isinstance(node, exp.Anonymous) else ""
-            if fname in FORBIDDEN_FUNCS or anon in FORBIDDEN_FUNCS:
-                raise UnsafeSQLError(f"Forbidden function: {fname or anon}")
+            fname = node.name.lower() if isinstance(node, exp.Anonymous) else (node.sql_name() or "").lower()
+            if fname in FORBIDDEN_FUNCS:
+                raise UnsafeSQLError(f"Forbidden function: {fname}")
 
     cte_names = {c.alias_or_name.lower() for c in tree.find_all(exp.CTE)}
     allowed = {t.lower() for t in allowed_tables} | cte_names
@@ -64,19 +85,15 @@ def validate_sql(sql: str, allowed_tables: list[str], max_rows: int = 200) -> st
         name = table.name.lower()
         if not name:
             raise UnsafeSQLError("Table functions / file reads are not allowed")
+        if table.catalog or table.db.lower() not in ("", "main"):
+            raise UnsafeSQLError(f"Qualified table names are not allowed: {table.sql(dialect='duckdb')}")
         if name not in allowed:
             raise UnsafeSQLError(f"Table '{table.name}' is not in the allowed list")
 
     if isinstance(tree, exp.Select):
-        limit = tree.args.get("limit")
-        current = None
-        if limit is not None:
-            try:
-                current = int(limit.expression.name)
-            except (AttributeError, ValueError):
-                current = None
+        current = _safe_limit(tree.args.get("limit"))
         if current is None or current > max_rows:
-            tree = tree.limit(max_rows)
+            tree = tree.limit(max_rows)              # replaces any unsafe/oversized LIMIT
     else:
         tree = exp.select("*").from_(tree.subquery("q")).limit(max_rows)
     return tree.sql(dialect="duckdb")

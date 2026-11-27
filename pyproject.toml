@@ -37,7 +37,7 @@ where = ["src"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q"
-filterwarnings = ["ignore::DeprecationWarning"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore:PySpark does not yet fully support pandas:FutureWarning"]
 
 [tool.ruff]
 line-length = 120

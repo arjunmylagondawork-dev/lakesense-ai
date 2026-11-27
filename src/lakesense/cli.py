@@ -70,12 +70,13 @@ def cmd_ask(args) -> None:
     from lakesense.ai.text_to_sql import TextToSQLAgent
 
     ans = TextToSQLAgent(get_settings()).ask(" ".join(args.question))
-    print(f"\nSQL ({ans.attempts} attempt(s), {ans.latency_ms} ms):\n{ans.sql}\n")
+    if ans.sql:
+        print(f"\nSQL ({ans.attempts} attempt(s), {ans.latency_ms} ms):\n{ans.sql}\n")
     if ans.ok:
         print(ans.data.to_string(index=False, max_rows=30))
         print(f"\n{ans.summary}")
     else:
-        print(f"ERROR: {ans.error}")
+        print(f"\n{ans.summary}\nReason: {ans.error}")
         sys.exit(1)
 
 
@@ -87,7 +88,23 @@ def cmd_all(args) -> None:
     cmd_anomalies(args)
 
 
+def load_dotenv(path: str = ".env") -> None:
+    """Minimal .env loader: KEY=VALUE lines; real environment variables win."""
+    import os
+    from pathlib import Path
+
+    env = Path(path)
+    if not env.exists():
+        return
+    for line in env.read_text(encoding="utf-8").splitlines():
+        line = line.split(" #")[0].strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
 def main(argv: list[str] | None = None) -> None:
+    load_dotenv()
     parser = argparse.ArgumentParser(prog="lakesense", description="AI-augmented lakehouse pipeline")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("generate", help="generate synthetic raw data").set_defaults(func=cmd_generate)

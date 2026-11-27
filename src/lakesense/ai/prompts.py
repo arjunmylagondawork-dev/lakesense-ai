@@ -23,6 +23,8 @@ Rules:
 - Revenue = sum(line_amount) on orders where status in ('placed','shipped','delivered'),
   or use the pre-aggregated gold tables when they answer the question.
 - Add ORDER BY for rankings and LIMIT for "top N" questions.
+- If the question cannot be answered from these tables, or asks to change data,
+  reply with exactly: CANNOT_ANSWER
 
 Schema:
 {schema}"""

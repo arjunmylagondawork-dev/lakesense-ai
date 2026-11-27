@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LakeSense AI · How it works</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --panel: #ffffff; --ink: #14181f; --muted: #5b6573; --line: #e3e7ee;
+    --bronze: #b0743a; --silver: #6f7c8c; --gold: #c99a16; --ai: #6b4fd8; --ok: #1f8a5b; --bad: #c8453c;
+    --accent: #2563eb; --code: #0f172a; --codeink: #e2e8f0;
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0d1117; --panel: #151b24; --ink: #e6edf3; --muted: #9aa6b4; --line: #263040;
+            --code: #0a0f16; --accent: #5b9bff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+         background: var(--bg); color: var(--ink); }
+  a { color: var(--accent); }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 20px; }
+  header { padding: 64px 0 36px; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: 12px; font-weight: 700; color: var(--ai); }
+  h1 { font-size: clamp(32px, 5vw, 52px); line-height: 1.1; margin: 10px 0 14px; letter-spacing: -.02em; }
+  h2 { font-size: 28px; margin: 0 0 8px; letter-spacing: -.01em; }
+  h3 { margin: 0 0 6px; font-size: 18px; }
+  .lede { font-size: 19px; color: var(--muted); max-width: 760px; }
+  section { padding: 44px 0; border-top: 1px solid var(--line); }
+  .sub { color: var(--muted); margin: 0 0 26px; max-width: 760px; }
+  .grid { display: grid; gap: 16px; }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .g4 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  .stat b { display: block; font-size: 30px; letter-spacing: -.02em; }
+  .stat span { color: var(--muted); font-size: 14px; }
+  .pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 99px;
+          border: 1px solid var(--line); color: var(--muted); margin: 0 6px 6px 0; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13.5px; }
+  pre { background: var(--code); color: var(--codeink); padding: 16px 18px; border-radius: 10px; overflow-x: auto; margin: 0; }
+  p code, li code, td code { background: color-mix(in srgb, var(--line) 60%, transparent); padding: 1px 6px; border-radius: 5px; }
+
+  /* pipeline flow */
+  .flow { display: flex; align-items: stretch; gap: 0; overflow-x: auto; padding-bottom: 6px; }
+  .stage { flex: 1 1 0; background: var(--panel); border: 2px solid var(--line); border-radius: var(--radius);
+           padding: 16px; cursor: pointer; transition: transform .15s, border-color .15s, box-shadow .15s; min-width: 132px; }
+  .stage:hover { transform: translateY(-2px); }
+  .stage.active { box-shadow: 0 8px 24px rgba(0,0,0,.10); }
+  .stage .tag { font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+  .stage .n { font-size: 22px; font-weight: 700; margin-top: 4px; }
+  .stage small { color: var(--muted); display: block; line-height: 1.35; }
+  .arrow { flex: 0 0 22px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 22px; }
+  .s-raw .tag { color: var(--muted); } .s-raw.active { border-color: var(--muted); }
+  .s-bronze .tag { color: var(--bronze); } .s-bronze.active { border-color: var(--bronze); }
+  .s-silver .tag { color: var(--silver); } .s-silver.active { border-color: var(--silver); }
+  .s-gold .tag { color: var(--gold); } .s-gold.active { border-color: var(--gold); }
+  .s-serve .tag { color: var(--accent); } .s-serve.active { border-color: var(--accent); }
+  .s-ai .tag { color: var(--ai); } .s-ai.active { border-color: var(--ai); }
+  .detail { margin-top: 16px; display: grid; grid-template-columns: 1.1fr 1fr; gap: 16px; }
+  .detail > *, .grid > * { min-width: 0; }
+  @media (max-width: 760px) { .detail { grid-template-columns: 1fr; } }
+  .detail ul { margin: 8px 0 0; padding-left: 18px; } .detail li { margin: 4px 0; }
+
+  /* record journey */
+  .journey { display: grid; gap: 10px; }
+  .row { display: grid; grid-template-columns: 90px 1fr 210px; gap: 12px; align-items: center; background: var(--panel);
+         border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  @media (max-width: 760px) { .row { grid-template-columns: 1fr; } }
+  .row .who { font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
+  .verdict { font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 8px; text-align: center; }
+  .v-ok { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+  .v-bad { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
+  .v-warn { background: color-mix(in srgb, var(--gold) 18%, transparent); color: var(--gold); }
+
+  /* AI cards */
+  .ai-card { border-top: 4px solid var(--ai); }
+  .steps { counter-reset: s; list-style: none; padding: 0; margin: 10px 0 0; }
+  .steps li { counter-increment: s; position: relative; padding-left: 34px; margin: 10px 0; }
+  .steps li::before { content: counter(s); position: absolute; left: 0; top: 1px; width: 24px; height: 24px; border-radius: 50%;
+                      background: var(--ai); color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+
+  /* chart */
+  .chart { width: 100%; height: auto; display: block; }
+  .chart-wrap { overflow-x: auto; }
+  @media (max-width: 600px) { .chart { min-width: 620px; } }
+  .legend { font-size: 13px; color: var(--muted); display: flex; gap: 18px; flex-wrap: wrap; margin-top: 8px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+
+  /* guardrail playground */
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .tabs button { font: inherit; font-size: 14px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+                 padding: 7px 12px; border-radius: 99px; cursor: pointer; }
+  .tabs button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .check { display: flex; gap: 10px; align-items: baseline; margin: 6px 0; font-size: 15px; }
+  .check i { font-style: normal; font-weight: 800; width: 18px; flex: 0 0 18px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td, th { overflow-wrap: anywhere; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  footer { padding: 40px 0 60px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+
+<header class="wrap">
+  <div class="eyebrow">LakeSense AI · How it works</div>
+  <h1>A data pipeline that checks its own data and explains what went wrong.</h1>
+  <p class="lede">Messy source files go in. Clean business tables come out, along with an AI report on every rejected
+    record, alerts on unusual revenue days, and a way to ask the data questions in plain English, with safety checks on every query.</p>
+  <div style="margin-top:18px">
+    <span class="pill">PySpark</span><span class="pill">Medallion architecture</span><span class="pill">DuckDB</span>
+    <span class="pill">Airflow</span><span class="pill">LLM: OpenAI · Anthropic · Bedrock · mock</span>
+    <span class="pill">Streamlit</span><span class="pill">Docker</span><span class="pill">GitHub Actions</span>
+  </div>
+</header>
+
+<section class="wrap">
+  <h2>One run, in numbers</h2>
+  <p class="sub">From a real run of <code>lakesense all</code> on the built-in synthetic dataset (120 days of e-commerce orders).</p>
+  <div class="grid g4">
+    <div class="card stat"><b>58,245</b><span>raw order lines landed</span></div>
+    <div class="card stat"><b>56,157</b><span>clean order lines in silver</span></div>
+    <div class="card stat"><b>1,861</b><span>order lines quarantined, each with its reasons</span></div>
+    <div class="card stat"><b>14</b><span>data-quality rules, all set in one YAML file</span></div>
+    <div class="card stat"><b>98.0</b><span>data-quality health score out of 100</span></div>
+    <div class="card stat"><b>2 of 2</b><span>planted revenue anomalies detected</span></div>
+    <div class="card stat"><b>44</b><span>automated tests (unit, security, end-to-end)</span></div>
+    <div class="card stat"><b>~1 min</b><span>full pipeline on a laptop; no cloud account or API key needed</span></div>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>The pipeline</h2>
+  <p class="sub">Click a stage to see what happens there. Each stage writes its own folder of Parquet files, so any step can be re-run on its own.</p>
+
+  <div class="flow" id="flow">
+    <div class="stage s-raw" data-k="raw"><div class="tag">Raw</div><div class="n">3 sources</div><small>CSV + JSON files, one orders file per day</small></div>
+    <div class="arrow">→</div>
+    <div class="stage s-bronze" data-k="bronze"><div class="tag">Bronze</div><div class="n">as-is</div><small>Every value kept as text, plus lineage columns</small></div>
+    <div class="arrow">→</div>
+    <div class="stage s-silver" data-k="silver"><div class="tag">Silver</div><div class="n">clean</div><small>Typed, de-duplicated, validated; bad rows quarantined</small></div>
+    <div class="arrow">→</div>
+    <div class="stage s-gold" data-k="gold"><div class="tag">Gold</div><div class="n">3 marts</div><small>Daily revenue, customer RFM, product performance</small></div>
+    <div class="arrow">→</div>
+    <div class="stage s-serve" data-k="serve"><div class="tag">Serving</div><div class="n">DuckDB</div><small>SQL warehouse, opened read-only</small></div>
+    <div class="arrow">→</div>
+    <div class="stage s-ai" data-k="ai"><div class="tag">AI layer</div><div class="n">3 tools</div><small>DQ report · anomaly alerts · ask your data</small></div>
+  </div>
+
+  <div class="detail">
+    <div class="card"><h3 id="d-title"></h3><p id="d-text" style="margin:0"></p><ul id="d-list"></ul></div>
+    <div><pre id="d-code"></pre></div>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>The journey of five records</h2>
+  <p class="sub">Real defects the generator plants in the raw data, and what the silver layer does with each one.
+    Rows that break an <b>error</b> rule are moved to quarantine with the rule names attached. Rows that only break a <b>warn</b> rule are kept and counted in the report.</p>
+  <div class="journey">
+    <div class="row"><div class="who">Order line</div><div><code>quantity = "2"</code>, <code>unit_price = "10.50"</code>, <code>status = "Delivered"</code></div><div class="verdict v-ok">✓ Silver (status normalised to "delivered")</div></div>
+    <div class="row"><div class="who">Order line</div><div><code>quantity = "two"</code>: text in a number column. Safe parsing turns it into NULL instead of crashing the job.</div><div class="verdict v-bad">✗ Quarantine · quantity_positive</div></div>
+    <div class="row"><div class="who">Order line</div><div><code>order_ts = "2099-12-31 23:59:59"</code>: a placeholder date in the future</div><div class="verdict v-bad">✗ Quarantine · order_ts_not_future</div></div>
+    <div class="row"><div class="who">Order line</div><div><code>product_id = "P0132"</code>: that product was itself rejected (negative price), so the order has no valid product. This is a cascading failure.</div><div class="verdict v-bad">✗ Quarantine · product_exists</div></div>
+    <div class="row"><div class="who">Customer</div><div><code>email = "olivia.smith1462_at_example.com"</code>: malformed but not fatal</div><div class="verdict v-warn">! Kept · email_format (warn)</div></div>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>The AI layer</h2>
+  <p class="sub">The AI is used where it helps a data team, and kept away from what it is bad at. Statistics find the problems; the language model explains them. Anything the model writes is treated as untrusted input.</p>
+  <div class="grid g3">
+    <div class="card ai-card">
+      <h3>1 · Data-quality incident report</h3>
+      <p style="margin:0;color:var(--muted)">"Why were 1,861 rows rejected last night?"</p>
+      <ol class="steps">
+        <li>Silver counts failures for every rule in a single pass and saves sample bad values.</li>
+        <li>A health score is computed: per table, failure rates are weighted (errors count more than warnings).</li>
+        <li>The LLM writes a Markdown report: summary, findings table, likely root cause, impact, and a fix snippet for each failing rule.</li>
+      </ol>
+    </div>
+    <div class="card ai-card">
+      <h3>2 · Revenue anomaly alerts</h3>
+      <p style="margin:0;color:var(--muted)">"Revenue looks strange on Tuesday."</p>
+      <ol class="steps">
+        <li>Divide each day by a weekday index, so a normal busy Saturday isn't flagged.</li>
+        <li>Score each day against the previous 14 days with a robust z-score (median and MAD, so one outlier can't skew the baseline).</li>
+        <li>For each flagged day, compare category revenue with its baseline. The LLM explains the likely cause and what to check next.</li>
+      </ol>
+    </div>
+    <div class="card ai-card">
+      <h3>3 · Ask your data (text-to-SQL)</h3>
+      <p style="margin:0;color:var(--muted)">"Top 10 customers by spend?"</p>
+      <ol class="steps">
+        <li>The LLM gets the warehouse schema and writes one SQL query.</li>
+        <li>Guardrails check it (see the playground below). Unsafe SQL is blocked and never retried. If the tables can't answer the question, it says so instead of guessing.</li>
+        <li>The query runs on a read-only connection that can't touch files. If the SQL is malformed or errors, the message goes back to the LLM to fix (up to 2 retries). Every attempt is logged.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>Anomaly detection, on the real output</h2>
+  <p class="sub">Daily revenue from the run. The generator planted a spike on 16 Jul and an outage-style drop on 28 Aug. Both are caught with high severity.
+    One more day (13 Sep) scores just over the threshold, and the report labels it "monitor, don't escalate".</p>
+  <div class="card">
+    <div class="chart-wrap"><svg class="chart" viewBox="0 0 900 300" role="img" aria-label="Daily revenue line chart with three flagged anomalies" id="chart"></svg></div>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--accent)"></span>Daily revenue</span>
+      <span><span class="dot" style="background:var(--bad)"></span>High-severity anomaly</span>
+      <span><span class="dot" style="background:var(--gold)"></span>Borderline (medium)</span>
+    </div>
+  </div>
+  <div class="grid g3" style="margin-top:16px">
+    <div class="card"><b style="color:var(--bad)">16 Jul · spike</b><br>341,931 vs expected 91,410 · z = +30.9<br><span style="color:var(--muted)">Spread across all categories → a platform-wide event (sale, bulk order or duplicate load)</span></div>
+    <div class="card"><b style="color:var(--bad)">28 Aug · drop</b><br>12,942 vs expected 101,786 · z = −7.4<br><span style="color:var(--muted)">All categories down → check the landing-zone file count and payment gateway status</span></div>
+    <div class="card"><b style="color:var(--gold)">13 Sep · borderline</b><br>164,143 vs expected 118,030 · z = +4.0<br><span style="color:var(--muted)">Likely normal variance from high-value electronics orders</span></div>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>Guardrail playground</h2>
+  <p class="sub">What happens to different SQL an LLM might return. These are the same checks the test suite runs in <code>tests/test_sql_guardrails.py</code>.</p>
+  <div class="tabs" id="gtabs"></div>
+  <div class="detail" style="margin-top:0">
+    <pre id="gsql"></pre>
+    <div class="card" id="gres"></div>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>Design choices</h2>
+  <div class="card" style="padding:4px 8px">
+    <table>
+      <tr><th>Choice</th><th>Why</th></tr>
+      <tr><td>Bronze stores text only</td><td>If casting happens at ingest, a bad value silently becomes NULL and the original is lost. Keeping text means silver can be fixed and replayed from bronze.</td></tr>
+      <tr><td><code>try_cast</code> / <code>try_to_timestamp</code></td><td>Spark 4 turns on ANSI mode, where one bad value fails the whole job. Safe parsing lets the quality rules catch it instead.</td></tr>
+      <tr><td>Error vs. warn rules</td><td>Blocking every imperfection throws away real revenue. Warnings are reported and scored, but the row continues.</td></tr>
+      <tr><td>Dimensions before facts</td><td>Orders are checked against <em>clean</em> products and customers, so cascading failures become visible in the report.</td></tr>
+      <tr><td>Statistics detect, LLM explains</td><td>LLMs can invent alerts and get arithmetic wrong. They only write the explanation, from numbers they are given.</td></tr>
+      <tr><td>Mock LLM by default</td><td>Anyone can clone and run the full flow in minutes, and CI tests it with predictable output. Switching to a real model takes one environment variable.</td></tr>
+      <tr><td>Atomic warehouse publish</td><td>The DuckDB file is built under a temp name and swapped in, so the app never reads a half-built warehouse.</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>Local today, AWS tomorrow</h2>
+  <p class="sub">Every local piece has a direct AWS equivalent, so the move to the cloud is a deployment change, not a rewrite.</p>
+  <div class="card" style="padding:4px 8px">
+    <table>
+      <tr><th>In this repo</th><th>On AWS</th></tr>
+      <tr><td>Parquet folders under <code>data/</code></td><td>S3 buckets (raw / bronze / silver / gold prefixes)</td></tr>
+      <tr><td>PySpark on <code>local[*]</code></td><td>AWS Glue jobs or EMR Serverless</td></tr>
+      <tr><td>DuckDB warehouse</td><td>Athena on the Glue Data Catalog, or Redshift Serverless</td></tr>
+      <tr><td>Airflow DAG</td><td>Amazon MWAA (or Step Functions)</td></tr>
+      <tr><td><code>LAKESENSE_LLM_PROVIDER=bedrock</code></td><td>Amazon Bedrock, Converse API</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>Run it yourself</h2>
+  <p class="sub">Needs Python 3.10+ and Java 17+.</p>
+<pre>git clone https://github.com/arjunmylagondawork-dev/lakesense-ai.git && cd lakesense-ai
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[app,dev]"
+
+lakesense all                              # data → bronze → silver → gold → warehouse → AI reports
+lakesense ask "top 5 customers by spend"   # plain English → guarded SQL → answer
+streamlit run app/streamlit_app.py         # dashboard on http://localhost:8501
+pytest                                     # 44 tests</pre>
+  <p style="color:var(--muted)">Or run <code>docker compose up --build</code>, then open <code>localhost:8501</code>.</p>
+</section>
+
+<section class="wrap">
+  <h2>What comes next</h2>
+  <div class="grid g3">
+    <div class="card"><b>Phase 2 · Table formats</b><br><span style="color:var(--muted)">Delta / Iceberg, incremental loads with <code>MERGE</code>, SCD Type 2 customers</span></div>
+    <div class="card"><b>Phase 3 · Modern stack</b><br><span style="color:var(--muted)">Gold marts as dbt models, Snowflake target, data contracts in CI</span></div>
+    <div class="card"><b>Phase 4 · AWS</b><br><span style="color:var(--muted)">Terraform: S3, Glue, Athena, IAM, KMS; MWAA; Bedrock</span></div>
+    <div class="card"><b>Phase 5 · Streaming</b><br><span style="color:var(--muted)">Kafka → Spark Structured Streaming, 5-minute revenue alerts</span></div>
+    <div class="card"><b>Phase 6 · Stronger AI</b><br><span style="color:var(--muted)">Text-to-SQL accuracy test set, retrieval over the data catalog, AI-suggested DQ rules</span></div>
+  </div>
+</section>
+
+<footer class="wrap">LakeSense AI · MIT licence · Arjun Mylagonda. The dataset is synthetic; no real customer data is used.</footer>
+
+<script>
+const STAGES = {
+  raw: { t: "Raw: the landing zone", d: "A seeded generator writes realistic, deliberately dirty files, so the pipeline has real work to do.",
+    l: ["customers.jsonl, including later update records (CDC-style)", "products.csv", "orders_YYYY-MM-DD.csv, one file per day for 120 days",
+        "Planted defects: blanks, negative quantities, zero prices, typos in status, future dates, unknown product ids, duplicates, text in number columns, a second date format"],
+    c: "$ lakesense generate\nGenerated 2053 customers, 150 products,\n58245 order lines into data/raw" },
+  bronze: { t: "Bronze: keep everything", d: "Files are read with every column as text. Nothing is cast or dropped, so bronze is a replayable copy of the source.",
+    l: ["Lineage columns: _source_file, _ingest_ts, _batch_id", "CSV with inferSchema off; JSON with primitivesAsString", "Written as Parquet, one folder per table"],
+    c: "df.withColumn(\"_source_file\", F.col(\"_metadata.file_name\"))\n  .withColumn(\"_ingest_ts\", F.current_timestamp())\n  .withColumn(\"_batch_id\", F.lit(batch_id))" },
+  silver: { t: "Silver: clean, check, quarantine", d: "Types are parsed safely, values are tidied, duplicates are removed, then the YAML rules run in one pass.",
+    l: ["try_cast / try_to_timestamp, accepting two date formats", "Deduplication with row_number(): latest record wins",
+        "Rule types: not_null, range, accepted_values, regex, not_future, referential", "Failed rule names are stored on the row as an array: _dq_failed",
+        "Orders are partitioned by order_date"],
+    c: "# config/pipeline.yaml\norders:\n  - { name: quantity_positive, type: range,\n      column: quantity, min: 1, max: 1000 }\n  - { name: product_exists, type: referential,\n      column: product_id, ref_table: products,\n      ref_column: product_id }" },
+  gold: { t: "Gold: business marts", d: "Analytics tables built with window functions. Cancelled and returned orders are left out of revenue.",
+    l: ["daily_revenue: orders, customers, units, revenue, AOV, 7-day moving average", "customer_rfm: recency, frequency and monetary scores (ntile 1–5) plus a segment label",
+        "product_performance: revenue, units, dense_rank within category, share of category revenue"],
+    c: "rfm.withColumn(\"r_score\",\n    6 - F.ntile(5).over(Window.orderBy(\"recency_days\")))\n   .withColumn(\"f_score\",\n    F.ntile(5).over(Window.orderBy(\"frequency\")))" },
+  serve: { t: "Serving: a SQL warehouse", d: "Gold and silver tables are loaded into a DuckDB file, a free stand-in for Athena, Redshift or Snowflake.",
+    l: ["Built under a temp name, then swapped in atomically", "Consumers (app, AI) open it read-only, with file and network access disabled", "The schema is read from information_schema to give the LLM context"],
+    c: "con.execute(\"CREATE TABLE daily_revenue AS\n  SELECT * FROM read_parquet('gold/daily_revenue/**/*.parquet')\")\ntmp.replace(db_path)   # atomic swap" },
+  ai: { t: "AI layer: explain, alert, answer", d: "Three tools behind one LLM interface. Choose the provider with LAKESENSE_LLM_PROVIDER.",
+    l: ["mock (default, offline, predictable) · openai · anthropic · bedrock", "SDKs are optional and only imported when used",
+        "Outputs: reports/dq_report.md, reports/anomaly_report.md, reports/query_log.jsonl", "Shown in a Streamlit dashboard and the CLI"],
+    c: "$ lakesense ask \"revenue by country\"\nSELECT country, SUM(line_amount) AS revenue, ...\nFROM orders WHERE status IN ('placed',\n  'shipped','delivered')\nGROUP BY country ORDER BY revenue DESC LIMIT 200" },
+};
+const stages = document.querySelectorAll(".stage");
+function show(k) {
+  stages.forEach(s => s.classList.toggle("active", s.dataset.k === k));
+  const s = STAGES[k];
+  document.getElementById("d-title").textContent = s.t;
+  document.getElementById("d-text").textContent = s.d;
+  const ul = document.getElementById("d-list"); ul.innerHTML = "";
+  s.l.forEach(x => { const li = document.createElement("li"); li.textContent = x; ul.appendChild(li); });
+  document.getElementById("d-code").textContent = s.c;
+}
+stages.forEach(s => s.addEventListener("click", () => show(s.dataset.k)));
+show("silver");
+
+const G = [
+  { n: "Normal question", sql: "SELECT customer_id, name, monetary\nFROM customer_rfm\nORDER BY monetary DESC", ok: true,
+    out: "SELECT customer_id, name, monetary FROM customer_rfm\nORDER BY monetary DESC LIMIT 200", why: "LIMIT 200 was added automatically" },
+  { n: "Uses a CTE", sql: "WITH t AS (SELECT customer_id FROM orders)\nSELECT * FROM t LIMIT 5", ok: true,
+    out: "Runs as written (CTE names are allowed)", why: "Existing small LIMIT kept" },
+  { n: "Drop table", sql: "DROP TABLE orders", ok: false, fails: "Read-only SELECT / WITH / UNION", why: "Only SELECT queries are allowed (got Drop)" },
+  { n: "Sneaky 2nd statement", sql: "SELECT 1; DROP TABLE orders", ok: false, fails: "Exactly one statement", why: "Expected exactly one statement, got 2" },
+  { n: "Read a server file", sql: "SELECT * FROM read_csv('/etc/passwd')", ok: false, fails: "No DDL, DML, ATTACH, COPY, PRAGMA or file reads", why: "Forbidden function: read_csv" },
+  { n: "LIMIT trick", sql: "SELECT * FROM orders\nLIMIT 5 + 1000000", ok: true,
+    out: "SELECT * FROM orders LIMIT 200", why: "Non-literal LIMIT replaced with LIMIT 200" },
+  { n: "Unknown table", sql: "SELECT * FROM secret_table", ok: false, fails: "Only allowed tables", why: "Table 'secret_table' is not in the allowed list" },
+];
+const checks = ["Parses as DuckDB SQL", "Exactly one statement", "Read-only SELECT / WITH / UNION", "No DDL, DML, ATTACH, COPY, PRAGMA or file reads", "Only allowed tables", "LIMIT enforced"];
+const tabs = document.getElementById("gtabs");
+function pick(i) {
+  [...tabs.children].forEach((b, j) => b.classList.toggle("on", i === j));
+  const g = G[i];
+  document.getElementById("gsql").textContent = g.sql;
+  const r = document.getElementById("gres");
+  r.innerHTML = "";
+  const head = document.createElement("div");
+  head.className = "verdict " + (g.ok ? "v-ok" : "v-bad");
+  head.style.textAlign = "left"; head.style.marginBottom = "10px";
+  head.textContent = g.ok ? "✓ Allowed: runs on a read-only connection" : "✗ Blocked: never executed, never retried";
+  r.appendChild(head);
+  const failAt = g.ok ? -1 : checks.indexOf(g.fails);
+  checks.forEach((c, j) => {
+    const d = document.createElement("div"); d.className = "check";
+    const state = failAt < 0 || j < failAt ? "pass" : j === failAt ? "fail" : "skip";
+    const icon = document.createElement("i");
+    icon.textContent = { pass: "✓", fail: "✗", skip: "·" }[state];
+    icon.style.color = { pass: "var(--ok)", fail: "var(--bad)", skip: "var(--muted)" }[state];
+    const t = document.createElement("span"); t.textContent = c + (state === "skip" ? " (not reached)" : "");
+    if (state === "skip") t.style.color = "var(--muted)";
+    d.append(icon, t); r.appendChild(d);
+  });
+  const note = document.createElement("p"); note.style.margin = "10px 0 0"; note.style.color = "var(--muted)";
+  note.textContent = g.why; r.appendChild(note);
+  if (g.ok && g.out) {
+    const pre = document.createElement("pre"); pre.style.marginTop = "10px"; pre.textContent = g.out; r.appendChild(pre);
+  }
+}
+G.forEach((g, i) => { const b = document.createElement("button"); b.textContent = g.n; b.onclick = () => pick(i); tabs.appendChild(b); });
+pick(0);
+
+// Daily revenue chart from a real run
+(function chart() {
+  const svg = document.getElementById("chart"), W = 900, H = 300, P = { l: 56, r: 16, t: 16, b: 34 };
+  const ys = [102159, 80963, 106902, 101206, 102285, 114505, 117811, 83633, 117324, 101710, 85563, 79526, 138904, 103726, 107395, 102988, 107913, 89135, 86538, 120794, 114932, 102814, 110381, 93031, 100386, 106678, 117751, 90645, 75281, 91583, 87975, 101418, 97205, 139964, 105846, 88580, 91189, 88587, 84513, 91540, 107812, 105606, 104474, 83623, 85201, 341931, 114433, 115075, 115394, 88087, 93092, 91484, 97462, 75725, 119069, 105144, 111667, 88393, 82072, 94148, 93351, 118497, 131041, 105836, 106742, 99949, 94265, 100537, 139787, 91476, 116922, 124569, 90800, 110670, 98464, 108652, 107969, 101409, 105881, 117814, 116517, 113108, 132921, 155130, 103836, 79159, 105226, 107827, 12942, 129919, 108089, 113014, 119064, 100476, 112435, 83783, 122116, 130301, 101375, 126703, 105893, 100537, 97974, 134787, 164143, 126640, 102743, 110843, 107905, 110164, 129219, 128723, 104719, 93031, 130989, 137628, 114373, 131358, 162310, 117304]; // real daily revenue from reports/revenue_scored.csv
+  const n = ys.length;
+  const marks = { 45: [341931, "var(--bad)", "16 Jul"], 88: [12942, "var(--bad)", "28 Aug"], 104: [164143, "var(--gold)", "13 Sep"] };
+  const max = 360000, x = i => P.l + i * (W - P.l - P.r) / (n - 1), y = v => H - P.b - v / max * (H - P.t - P.b);
+  const ns = "http://www.w3.org/2000/svg", el = (t, a) => { const e = document.createElementNS(ns, t); for (const k in a) e.setAttribute(k, a[k]); svg.appendChild(e); return e; };
+  [0, 100000, 200000, 300000].forEach(v => {
+    el("line", { x1: P.l, x2: W - P.r, y1: y(v), y2: y(v), stroke: "currentColor", "stroke-opacity": .12 });
+    el("text", { x: P.l - 8, y: y(v) + 4, "text-anchor": "end", "font-size": 11, fill: "currentColor", "fill-opacity": .6 }).textContent = v / 1000 + "k";
+  });
+  ["Jun", "Jul", "Aug", "Sep"].forEach((m, k) => el("text", { x: x(k * 30.5 + 2), y: H - 10, "font-size": 11, fill: "currentColor", "fill-opacity": .6 }).textContent = m);
+  el("polyline", { points: ys.map((v, i) => x(i) + "," + y(v)).join(" "), fill: "none", stroke: "var(--accent)", "stroke-width": 2, "stroke-linejoin": "round" });
+  Object.entries(marks).forEach(([i, m]) => {
+    el("circle", { cx: x(+i), cy: y(m[0]), r: 7, fill: m[1], stroke: "var(--panel)", "stroke-width": 2 });
+    el("text", { x: x(+i) + 10, y: y(m[0]) + (m[0] < 50000 ? -8 : 4), "font-size": 12, "font-weight": 700, fill: m[1] }).textContent = m[2];
+  });
+  svg.style.color = getComputedStyle(document.body).color;
+})();
+</script>
+</body>
+</html>

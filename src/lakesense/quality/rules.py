@@ -50,7 +50,7 @@ class RuleResult:
         return {**asdict(self), "pass_rate": round(self.pass_rate, 5)}
 
 
-def violation_expr(rule: Rule, ref_dfs: dict[str, DataFrame] | None = None) -> Column:
+def violation_expr(rule: Rule) -> Column:
     c = F.col(rule.column)
     p = rule.params
     if rule.type == "not_null":
@@ -107,8 +107,10 @@ def apply_rules(
 
 
 def summarize(table: str, checked: DataFrame, rules: list[Rule], sample_size: int = 5) -> list[RuleResult]:
-    """Aggregate violation counts per rule (one Spark job) + a few sample bad values."""
-    checked = checked.cache()
+    """Aggregate violation counts per rule (one Spark job) + a few sample bad values.
+
+    Caching is the caller's responsibility (silver caches `checked` once and reuses it).
+    """
     total = checked.count()
     aggs = [F.sum(F.array_contains("_dq_failed", r.name).cast("int")).alias(r.name) for r in rules]
     counts = checked.agg(*aggs).first().asDict() if rules else {}
@@ -123,5 +125,4 @@ def summarize(table: str, checked: DataFrame, rules: list[Rule], sample_size: in
                 .select(F.col(r.column).cast("string")).distinct().limit(sample_size).collect()
             ]
         results.append(RuleResult(table, r.name, r.type, r.column, r.severity, total, failed, samples))
-    checked.unpersist()
     return results

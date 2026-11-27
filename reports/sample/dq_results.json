@@ -5,12 +5,12 @@
     "type": "not_null",
     "column": "customer_id",
     "severity": "error",
-    "total_rows": 1986,
-    "failed_rows": 1,
+    "total_rows": 2000,
+    "failed_rows": 15,
     "sample_values": [
       "None"
     ],
-    "pass_rate": 0.9995
+    "pass_rate": 0.9925
   },
   {
     "table": "customers",
@@ -18,7 +18,7 @@
     "type": "regex",
     "column": "email",
     "severity": "warn",
-    "total_rows": 1986,
+    "total_rows": 2000,
     "failed_rows": 24,
     "sample_values": [
       "olivia.smith1462_at_example.com",
@@ -27,7 +27,7 @@
       "emma.brown1207_at_example.com",
       "fatima.smith471_at_example.com"
     ],
-    "pass_rate": 0.98792
+    "pass_rate": 0.988
   },
   {
     "table": "customers",
@@ -35,12 +35,12 @@
     "type": "accepted_values",
     "column": "segment",
     "severity": "warn",
-    "total_rows": 1986,
+    "total_rows": 2000,
     "failed_rows": 20,
     "sample_values": [
       "unknown"
     ],
-    "pass_rate": 0.98993
+    "pass_rate": 0.99
   },
   {
     "table": "customers",
@@ -48,12 +48,12 @@
     "type": "not_future",
     "column": "signup_date",
     "severity": "error",
-    "total_rows": 1986,
+    "total_rows": 2000,
     "failed_rows": 13,
     "sample_values": [
       "2099-01-01"
     ],
-    "pass_rate": 0.99345
+    "pass_rate": 0.9935
   },
   {
     "table": "products",

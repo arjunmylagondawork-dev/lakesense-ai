@@ -60,6 +60,29 @@ class FlakyLLM(LLMClient):
         return "SELECT revenu FROM daily_revenue" if self.calls == 1 else "SELECT revenue FROM daily_revenue"
 
 
+class MalformedThenFixedLLM(LLMClient):
+    """First answer does not even parse; the agent must send the parser error back and retry."""
+    name = "malformed"
+
+    def __init__(self):
+        self.prompts = []
+
+    def complete(self, system, prompt, *, task="", context=None):
+        if task == "summarize_result":
+            return "ok"
+        self.prompts.append(prompt)
+        if len(self.prompts) == 1:
+            return "SELECT 'unterminated FROM daily_revenue"
+        return "SELECT revenue FROM daily_revenue"
+
+
+class UnanswerableLLM(LLMClient):
+    name = "unanswerable"
+
+    def complete(self, system, prompt, *, task="", context=None):
+        return "CANNOT_ANSWER"
+
+
 class EvilLLM(LLMClient):
     name = "evil"
 
@@ -86,3 +109,16 @@ def test_text_to_sql_blocks_destructive_output(small_settings, mem_con):
     ans = TextToSQLAgent(small_settings, llm=EvilLLM(), con=mem_con).ask("delete everything")
     assert not ans.ok and ans.error.startswith("Blocked")
     assert mem_con.execute("SELECT count(*) FROM daily_revenue").fetchone()[0] == 1
+
+
+def test_text_to_sql_retries_malformed_sql(small_settings, mem_con):
+    llm = MalformedThenFixedLLM()
+    ans = TextToSQLAgent(small_settings, llm=llm, con=mem_con).ask("revenue?")
+    assert ans.ok and ans.attempts == 2
+    assert [h["status"] for h in ans.history] == ["invalid", "ok"]
+    assert "does not parse" in llm.prompts[1]          # error was fed back to the model
+
+
+def test_text_to_sql_unanswerable(small_settings, mem_con):
+    ans = TextToSQLAgent(small_settings, llm=UnanswerableLLM(), con=mem_con).ask("what is the weather?")
+    assert not ans.ok and ans.sql is None and ans.attempts == 1

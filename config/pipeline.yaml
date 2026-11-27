@@ -15,7 +15,7 @@ generator:
   start_date: "2026-06-01"
   avg_lines_per_day: 400
   dirty_rate: 0.03           # share of records that get a data-quality defect
-  # Injected business anomalies the AI layer should detect
+  # Injected business anomalies the AI layer should detect ("kind" is a label; "factor" scales volume)
   anomalies:
     - { day_offset: 45, kind: spike, factor: 4.0 }   # e.g. flash sale / bulk fraud
     - { day_offset: 88, kind: drop,  factor: 0.15 }  # e.g. payment-gateway outage
@@ -54,7 +54,6 @@ quality:
     - { name: customer_exists, type: referential, column: customer_id, ref_table: customers, ref_column: customer_id, severity: warn }
 
 anomaly:
-  metric: revenue
   window_days: 14
   z_threshold: 3.5           # robust z-score (median / MAD) threshold
   weekday_seasonality: true  # adjust for busy weekends before scoring

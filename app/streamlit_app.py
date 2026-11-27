@@ -13,10 +13,12 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+from lakesense.cli import load_dotenv
 from lakesense.config import get_settings
 from lakesense.serving.warehouse import connect_readonly
 
 st.set_page_config(page_title="LakeSense AI", page_icon="🌊", layout="wide")
+load_dotenv()
 settings = get_settings()
 reports = settings.paths.reports
 
@@ -91,9 +93,9 @@ with quality:
 with ask:
     from lakesense.ai.text_to_sql import TextToSQLAgent
 
-    @st.cache_resource
+    @st.cache_resource(ttl=300)   # refreshed periodically so a republished warehouse is picked up
     def agent() -> TextToSQLAgent:
-        return TextToSQLAgent(settings)
+        return TextToSQLAgent(settings)   # queries use a fresh cursor each time (thread-safe)
 
     st.write("Ask a business question. The LLM writes SQL, guardrails validate it, "
              "and it runs on a **read-only** warehouse connection.")
@@ -103,10 +105,11 @@ with ask:
     question = st.text_input("Your question", value=pick)
     if question:
         ans = agent().ask(question)
-        st.code(ans.sql or "", language="sql")
+        if ans.sql:
+            st.code(ans.sql, language="sql")
         st.caption(f"{ans.attempts} attempt(s) - {ans.latency_ms} ms - provider: {agent().llm.name}")
         if ans.ok:
             st.success(ans.summary)
             st.dataframe(ans.data, width="stretch", hide_index=True)
         else:
-            st.error(ans.error)
+            st.error(f"{ans.summary} ({ans.error})")
