@@ -231,7 +231,10 @@ def append_days(settings: Settings | None = None, days: int = 7, drift: str = "n
     written: list[Path] = []
     for i in range(1, days + 1):
         day = last_day + timedelta(days=i)
-        n = int(g.get("avg_lines_per_day", 400) * rng.uniform(0.9, 1.1) * (1.25 if day.weekday() >= 5 else 1))
+        offset = (day - date.fromisoformat(g.get("start_date", "2026-06-01"))).days
+        trend = 1 + offset * 0.002                       # same growth curve as the initial load
+        n = int(g.get("avg_lines_per_day", 400) * trend * rng.uniform(0.9, 1.1)
+                * (1.25 if day.weekday() >= 5 else 1))
         lines = _order_lines_for_day(rng, day, n, customers, products, dirty, counter)
         # late-arriving corrections for earlier orders (same order_line_id, new status)
         base_cols = list(lines[0].keys())   # corrections must match today's file layout

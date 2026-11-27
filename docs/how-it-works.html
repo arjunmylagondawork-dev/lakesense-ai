@@ -106,10 +106,12 @@
 <header class="wrap">
   <div class="eyebrow">LakeSense AI · How it works</div>
   <h1>A data pipeline that checks its own data and explains what went wrong.</h1>
-  <p class="lede">Messy source files go in. Clean business tables come out, along with an AI report on every rejected
-    record, alerts on unusual revenue days, and a way to ask the data questions in plain English, with safety checks on every query.</p>
+  <p class="lede">Messy source files go in, every day. Only the new ones are loaded; corrections are merged, customer
+    changes are kept as history, and broken files are turned away at the door. Clean Delta Lake tables come out, along
+    with AI reports on rejected records and schema changes, alerts on unusual revenue days, and a way to ask the data
+    questions in plain English, with safety checks on every query.</p>
   <div style="margin-top:18px">
-    <span class="pill">PySpark</span><span class="pill">Medallion architecture</span><span class="pill">DuckDB</span>
+    <span class="pill">PySpark</span><span class="pill">Delta Lake</span><span class="pill">Medallion architecture</span><span class="pill">DuckDB</span>
     <span class="pill">Airflow</span><span class="pill">LLM: OpenAI · Anthropic · Bedrock · mock</span>
     <span class="pill">Streamlit</span><span class="pill">Docker</span><span class="pill">GitHub Actions</span>
   </div>
@@ -125,7 +127,7 @@
     <div class="card stat"><b>14</b><span>data-quality rules, all set in one YAML file</span></div>
     <div class="card stat"><b>98.0</b><span>data-quality health score out of 100</span></div>
     <div class="card stat"><b>2 of 2</b><span>planted revenue anomalies detected</span></div>
-    <div class="card stat"><b>44</b><span>automated tests (unit, security, end-to-end)</span></div>
+    <div class="card stat"><b>53</b><span>automated tests (unit, security, end-to-end)</span></div>
     <div class="card stat"><b>~1 min</b><span>full pipeline on a laptop; no cloud account or API key needed</span></div>
   </div>
 </section>
@@ -137,9 +139,9 @@
   <div class="flow" id="flow">
     <div class="stage s-raw" data-k="raw"><div class="tag">Raw</div><div class="n">3 sources</div><small>CSV + JSON files, one orders file per day</small></div>
     <div class="arrow">→</div>
-    <div class="stage s-bronze" data-k="bronze"><div class="tag">Bronze</div><div class="n">as-is</div><small>Every value kept as text, plus lineage columns</small></div>
+    <div class="stage s-bronze" data-k="bronze"><div class="tag">Bronze</div><div class="n">new files</div><small>Contract-checked, append-only, every value kept as text</small></div>
     <div class="arrow">→</div>
-    <div class="stage s-silver" data-k="silver"><div class="tag">Silver</div><div class="n">clean</div><small>Typed, de-duplicated, validated; bad rows quarantined</small></div>
+    <div class="stage s-silver" data-k="silver"><div class="tag">Silver</div><div class="n">MERGE</div><small>Typed, validated, upserted; SCD2 history; bad rows quarantined</small></div>
     <div class="arrow">→</div>
     <div class="stage s-gold" data-k="gold"><div class="tag">Gold</div><div class="n">3 marts</div><small>Daily revenue, customer RFM, product performance</small></div>
     <div class="arrow">→</div>
@@ -164,6 +166,43 @@
     <div class="row"><div class="who">Order line</div><div><code>order_ts = "2099-12-31 23:59:59"</code>: a placeholder date in the future</div><div class="verdict v-bad">✗ Quarantine · order_ts_not_future</div></div>
     <div class="row"><div class="who">Order line</div><div><code>product_id = "P0132"</code>: that product was itself rejected (negative price), so the order has no valid product. This is a cascading failure.</div><div class="verdict v-bad">✗ Quarantine · product_exists</div></div>
     <div class="row"><div class="who">Customer</div><div><code>email = "olivia.smith1462_at_example.com"</code>: malformed but not fatal</div><div class="verdict v-warn">! Kept · email_format (warn)</div></div>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>Day 2 and after: incremental runs</h2>
+  <p class="sub">After the first full load, the pipeline runs daily on whatever is new. Real numbers from appending 7 more
+    days (carrying a new <code>promo_code</code> column the contract didn't know about) and then a partner file that is missing <code>unit_price</code>.</p>
+  <div class="grid g4">
+    <div class="card stat"><b>0</b><span>rows loaded by a re-run with no new files (idempotent)</span></div>
+    <div class="card stat"><b>3,626</b><span>new order lines inserted by MERGE</span></div>
+    <div class="card stat"><b>72</b><span>late status corrections that updated existing rows</span></div>
+    <div class="card stat"><b>1</b><span>partner file rejected by its contract; the rest of the batch loaded</span></div>
+  </div>
+  <div class="detail">
+    <div class="card">
+      <h3>SCD Type 2: one customer over time</h3>
+      <p style="margin:0 0 10px;color:var(--muted)">A new version is written only when segment, country or email actually changes. Re-sending identical data writes nothing.</p>
+      <table>
+        <tr><th>Segment</th><th>Country</th><th>Valid from</th><th>Valid to</th><th>Current</th></tr>
+        <tr><td>enterprise</td><td>US</td><td>2025-08-22</td><td>2026-10-05</td><td>no</td></tr>
+        <tr><td>consumer</td><td>US</td><td>2026-10-05</td><td>2026-10-06</td><td>no</td></tr>
+        <tr><td>consumer</td><td>AE</td><td>2026-10-06</td><td>open</td><td><b style="color:var(--ok)">yes</b></td></tr>
+      </table>
+      <p style="margin:10px 0 0;color:var(--muted)">Customer C00089 · 2,326 versions across 2,000 customers after the run, exactly one current row each.</p>
+    </div>
+<pre>$ lakesense generate --append-days 7 --drift new-column
+$ lakesense run
+bronze.orders  &lt;- 3826 rows from 7 new file(s)
+silver.orders: 3626 inserted, 72 updated (MERGE)
+silver.customer_history: 2287 versions
+
+$ lakesense generate --append-days 1 --drift missing-column
+$ lakesense run
+bronze.orders: REJECTED orders_2026-10-06_partner.csv
+               - missing required ['unit_price']
+
+$ lakesense history silver.orders --version 0   # Delta time travel</pre>
   </div>
 </section>
 
@@ -241,6 +280,10 @@
       <tr><td>Dimensions before facts</td><td>Orders are checked against <em>clean</em> products and customers, so cascading failures become visible in the report.</td></tr>
       <tr><td>Statistics detect, LLM explains</td><td>LLMs can invent alerts and get arithmetic wrong. They only write the explanation, from numbers they are given.</td></tr>
       <tr><td>Mock LLM by default</td><td>Anyone can clone and run the full flow in minutes, and CI tests it with predictable output. Switching to a real model takes one environment variable.</td></tr>
+      <tr><td>Incremental, idempotent loads</td><td>A manifest of loaded files and processed batches means re-runs and Airflow retries never duplicate data, and only new work is done.</td></tr>
+      <tr><td>MERGE with "newer wins"</td><td>A late correction updates the original row; an old replay can never overwrite newer data.</td></tr>
+      <tr><td>Contracts before ingestion</td><td>Headers are checked before Spark reads a file, so one broken file is rejected on its own instead of failing the whole batch.</td></tr>
+      <tr><td>Delta Lake, Parquet fallback</td><td>Delta gives ACID MERGE, time travel and OPTIMIZE; the same code runs on plain Parquet, and CI tests both.</td></tr>
       <tr><td>Atomic warehouse publish</td><td>The DuckDB file is built under a temp name and swapped in, so the app never reads a half-built warehouse.</td></tr>
     </table>
   </div>
@@ -252,7 +295,7 @@
   <div class="card" style="padding:4px 8px">
     <table>
       <tr><th>In this repo</th><th>On AWS</th></tr>
-      <tr><td>Parquet folders under <code>data/</code></td><td>S3 buckets (raw / bronze / silver / gold prefixes)</td></tr>
+      <tr><td>Delta tables under <code>data/</code></td><td>S3 buckets with Delta tables (or Databricks Unity Catalog)</td></tr>
       <tr><td>PySpark on <code>local[*]</code></td><td>AWS Glue jobs or EMR Serverless</td></tr>
       <tr><td>DuckDB warehouse</td><td>Athena on the Glue Data Catalog, or Redshift Serverless</td></tr>
       <tr><td>Airflow DAG</td><td>Amazon MWAA (or Step Functions)</td></tr>
@@ -268,17 +311,19 @@
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[app,dev]"
 
-lakesense all                              # data → bronze → silver → gold → warehouse → AI reports
+lakesense all                              # full load → bronze → silver → gold → warehouse → AI reports
+lakesense generate --append-days 7         # land a week of new files
+lakesense run                              # incremental: only the new files, MERGE + SCD2
 lakesense ask "top 5 customers by spend"   # plain English → guarded SQL → answer
 streamlit run app/streamlit_app.py         # dashboard on http://localhost:8501
-pytest                                     # 44 tests</pre>
+pytest                                     # 53 tests</pre>
   <p style="color:var(--muted)">Or run <code>docker compose up --build</code>, then open <code>localhost:8501</code>.</p>
 </section>
 
 <section class="wrap">
   <h2>What comes next</h2>
   <div class="grid g3">
-    <div class="card"><b>Phase 2 · Table formats</b><br><span style="color:var(--muted)">Delta / Iceberg, incremental loads with <code>MERGE</code>, SCD Type 2 customers</span></div>
+    <div class="card"><b>✓ Phase 2 · Done</b><br><span style="color:var(--muted)">Delta Lake, incremental loads with <code>MERGE</code>, SCD Type 2 customers, schema contracts</span></div>
     <div class="card"><b>Phase 3 · Modern stack</b><br><span style="color:var(--muted)">Gold marts as dbt models, Snowflake target, data contracts in CI</span></div>
     <div class="card"><b>Phase 4 · AWS</b><br><span style="color:var(--muted)">Terraform: S3, Glue, Athena, IAM, KMS; MWAA; Bedrock</span></div>
     <div class="card"><b>Phase 5 · Streaming</b><br><span style="color:var(--muted)">Kafka → Spark Structured Streaming, 5-minute revenue alerts</span></div>
@@ -294,20 +339,20 @@ const STAGES = {
     l: ["customers.jsonl, including later update records (CDC-style)", "products.csv", "orders_YYYY-MM-DD.csv, one file per day for 120 days",
         "Planted defects: blanks, negative quantities, zero prices, typos in status, future dates, unknown product ids, duplicates, text in number columns, a second date format"],
     c: "$ lakesense generate\nGenerated 2053 customers, 150 products,\n58245 order lines into data/raw" },
-  bronze: { t: "Bronze: keep everything", d: "Files are read with every column as text. Nothing is cast or dropped, so bronze is a replayable copy of the source.",
-    l: ["Lineage columns: _source_file, _ingest_ts, _batch_id", "CSV with inferSchema off; JSON with primitivesAsString", "Written as Parquet, one folder per table"],
-    c: "df.withColumn(\"_source_file\", F.col(\"_metadata.file_name\"))\n  .withColumn(\"_ingest_ts\", F.current_timestamp())\n  .withColumn(\"_batch_id\", F.lit(batch_id))" },
-  silver: { t: "Silver: clean, check, quarantine", d: "Types are parsed safely, values are tidied, duplicates are removed, then the YAML rules run in one pass.",
-    l: ["try_cast / try_to_timestamp, accepting two date formats", "Deduplication with row_number(): latest record wins",
-        "Rule types: not_null, range, accepted_values, regex, not_future, referential", "Failed rule names are stored on the row as an array: _dq_failed",
-        "Orders are partitioned by order_date"],
-    c: "# config/pipeline.yaml\norders:\n  - { name: quantity_positive, type: range,\n      column: quantity, min: 1, max: 1000 }\n  - { name: product_exists, type: referential,\n      column: product_id, ref_table: products,\n      ref_column: product_id }" },
+  bronze: { t: "Bronze: only new files, kept as-is", d: "A manifest remembers every file already loaded, so each run reads only new files. Each one is checked against its schema contract first, then appended with every column as text.",
+    l: ["Re-runs and retries are no-ops: a file is new only if its name, size or mtime changed", "Missing required column → that file is rejected; new column → kept (schema evolution) and reported", "Files are read in groups of identical header, so extra columns never shift values", "Lineage columns: _source_file, _ingest_ts, _batch_id; stored as an append-only Delta table"],
+    c: "# config/pipeline.yaml\ncontracts:\n  orders:\n    required: [order_line_id, order_id, order_ts,\n               customer_id, product_id, quantity,\n               unit_price, status]\n    optional: [payment_method, country]" },
+  silver: { t: "Silver: clean, check, MERGE", d: "Only pending bronze batches are processed. Types are parsed safely, the YAML rules run in one pass, and valid rows are upserted into Delta tables with MERGE.",
+    l: ["try_cast / try_to_timestamp, accepting two date formats", "Rule types: not_null, range, accepted_values, regex, not_future, referential",
+        "MERGE on the business key; a row is updated only if the incoming one is newer", "Customer changes become SCD Type 2 versions in customer_history",
+        "Failing rows are appended to quarantine with the names of the rules they broke"],
+    c: "target.alias(\"t\").merge(batch.alias(\"s\"),\n    \"t.order_line_id = s.order_line_id\")\n  .whenMatchedUpdateAll(\n    condition=\"s._ingest_ts >= t._ingest_ts\")\n  .whenNotMatchedInsertAll()\n  .execute()" },
   gold: { t: "Gold: business marts", d: "Analytics tables built with window functions. Cancelled and returned orders are left out of revenue.",
     l: ["daily_revenue: orders, customers, units, revenue, AOV, 7-day moving average", "customer_rfm: recency, frequency and monetary scores (ntile 1–5) plus a segment label",
         "product_performance: revenue, units, dense_rank within category, share of category revenue"],
     c: "rfm.withColumn(\"r_score\",\n    6 - F.ntile(5).over(Window.orderBy(\"recency_days\")))\n   .withColumn(\"f_score\",\n    F.ntile(5).over(Window.orderBy(\"frequency\")))" },
   serve: { t: "Serving: a SQL warehouse", d: "Gold and silver tables are loaded into a DuckDB file, a free stand-in for Athena, Redshift or Snowflake.",
-    l: ["Built under a temp name, then swapped in atomically", "Consumers (app, AI) open it read-only, with file and network access disabled", "The schema is read from information_schema to give the LLM context"],
+    l: ["Reads the Delta log for the live file list, so files replaced by a MERGE are never double-counted", "Built under a temp name, then swapped in atomically", "Consumers (app, AI) open it read-only, with file and network access disabled", "The schema is read from information_schema to give the LLM context"],
     c: "con.execute(\"CREATE TABLE daily_revenue AS\n  SELECT * FROM read_parquet('gold/daily_revenue/**/*.parquet')\")\ntmp.replace(db_path)   # atomic swap" },
   ai: { t: "AI layer: explain, alert, answer", d: "Three tools behind one LLM interface. Choose the provider with LAKESENSE_LLM_PROVIDER.",
     l: ["mock (default, offline, predictable) · openai · anthropic · bedrock", "SDKs are optional and only imported when used",

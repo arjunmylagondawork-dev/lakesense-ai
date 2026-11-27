@@ -9,11 +9,12 @@ Each phase is a self-contained upgrade that can be shipped as its own pull reque
 - Guarded text-to-SQL with self-correction and audit log
 - Streamlit app, Airflow DAG, Docker, CI, 40+ tests
 
-## Phase 2: Production table formats & incremental loads
-- [ ] Replace Parquet with **Delta Lake or Apache Iceberg** (ACID, time travel, schema evolution)
-- [ ] **Incremental processing**: only new landing files (watermark / file manifest), `MERGE INTO` upserts
-- [ ] **SCD Type 2** for `customers` (track segment changes over time)
-- [ ] Schema-drift detection in bronze, with an LLM-suggested mapping for new columns
+## ✅ Phase 2: Production table formats & incremental loads (done)
+- [x] **Delta Lake** tables (ACID, time travel, schema evolution, OPTIMIZE / Z-ORDER / VACUUM), Parquet fallback
+- [x] **Incremental processing**: file manifest, idempotent re-runs, `MERGE INTO` upserts of late corrections
+- [x] **SCD Type 2** `customer_history` (segment / country / email changes over time)
+- [x] Source **schema contracts** + drift detection in bronze, with an LLM drift report and rename hints
+- [ ] Apache Iceberg as a third table format
 
 ## Phase 3: Modern data stack
 - [ ] Rebuild gold marts as **dbt** models (`dbt-duckdb` locally, `dbt-snowflake` in cloud) with dbt tests and docs
