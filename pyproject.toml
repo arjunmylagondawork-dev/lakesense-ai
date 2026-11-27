@@ -5,13 +5,15 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lakesense-ai"
 version = "0.1.0"
-description = "AI-augmented PySpark lakehouse: medallion pipeline, LLM data-quality triage, anomaly detection and guarded text-to-SQL."
+description = "AI-augmented PySpark + Delta Lake lakehouse: incremental medallion pipeline, SCD2, schema contracts, LLM data-quality triage, anomaly detection and guarded text-to-SQL."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Arjun Mylagonda" }]
 dependencies = [
-  "pyspark>=3.5,<5",
+  "pyspark>=4.0.1,<5",
+  "delta-spark>=4.0,<5",        # Delta Lake for Spark (jars resolved from Maven on first run)
+  "deltalake>=0.25",            # delta-rs: reads the Delta log for the serving layer
   "duckdb>=1.1",
   "pandas>=2.1",
   "numpy>=1.26",

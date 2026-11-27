@@ -9,32 +9,42 @@ import yaml
 from lakesense.config import DEFAULT_CONFIG, load_settings
 
 os.environ.setdefault("LAKESENSE_LLM_PROVIDER", "mock")
+# Tests default to plain Parquet (no jar download). CI also runs them with
+# LAKESENSE_TABLE_FORMAT=delta to exercise real Delta Lake MERGE / time travel.
+os.environ.setdefault("LAKESENSE_TABLE_FORMAT", "parquet")
+TABLE_FORMAT = os.environ["LAKESENSE_TABLE_FORMAT"]
+
+delta_only = pytest.mark.skipif(TABLE_FORMAT != "delta", reason="needs LAKESENSE_TABLE_FORMAT=delta")
 
 
 @pytest.fixture(scope="session")
 def spark():
-    from pyspark.sql import SparkSession
+    from lakesense.spark_session import build_spark
 
-    session = (
-        SparkSession.builder.master("local[2]").appName("lakesense-tests")
-        .config("spark.sql.shuffle.partitions", 2)
-        .config("spark.sql.session.timeZone", "UTC")
-        .config("spark.ui.enabled", "false")
-        .getOrCreate()
-    )
+    session = build_spark("lakesense-tests", "local[2]", 2, fmt=TABLE_FORMAT)
     yield session
     session.stop()
 
 
-@pytest.fixture(scope="session")
-def small_settings(tmp_path_factory) -> object:
-    """Settings pointing at a temp dir with a small, fast dataset."""
-    root: Path = tmp_path_factory.mktemp("lakesense")
+def _settings(root: Path, **generator):
     cfg = yaml.safe_load(DEFAULT_CONFIG.read_text())
-    cfg["generator"].update(n_customers=200, n_products=40, days=40, avg_lines_per_day=60,
-                            anomalies=[{"day_offset": 30, "kind": "spike", "factor": 5.0}])
+    defaults = dict(n_customers=200, n_products=40, days=40, avg_lines_per_day=60,
+                    anomalies=[{"day_offset": 30, "kind": "spike", "factor": 5.0}])
+    cfg["generator"].update({**defaults, **generator})
     cfg["spark"]["master"] = "local[2]"
     cfg["spark"]["shuffle_partitions"] = 2
     path = root / "pipeline.yaml"
     path.write_text(yaml.safe_dump(cfg))
     return load_settings(path, root=root)
+
+
+@pytest.fixture(scope="session")
+def small_settings(tmp_path_factory):
+    """Settings pointing at a temp dir with a small, fast dataset."""
+    return _settings(tmp_path_factory.mktemp("lakesense"))
+
+
+@pytest.fixture()
+def fresh_settings(tmp_path):
+    """Isolated settings for tests that mutate lake state."""
+    return _settings(tmp_path, days=10)

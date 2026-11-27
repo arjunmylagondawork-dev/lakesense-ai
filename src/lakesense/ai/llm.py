@@ -45,6 +45,7 @@ class MockLLM(LLMClient):
             "anomaly_explain": mock_responses.anomaly_explanation,
             "text_to_sql": mock_responses.text_to_sql,
             "summarize_result": mock_responses.summarize_result,
+            "schema_drift": mock_responses.schema_drift,
         }.get(task)
         if handler is None:
             return "Mock LLM: no handler for this task."

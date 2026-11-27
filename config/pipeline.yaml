@@ -20,10 +20,31 @@ generator:
     - { day_offset: 45, kind: spike, factor: 4.0 }   # e.g. flash sale / bulk fraud
     - { day_offset: 88, kind: drop,  factor: 0.15 }  # e.g. payment-gateway outage
 
+storage:
+  # delta   = Delta Lake tables: MERGE upserts, schema evolution, time travel, OPTIMIZE/VACUUM
+  # parquet = plain Parquet fallback (no extra jars needed)
+  # Override with the LAKESENSE_TABLE_FORMAT environment variable.
+  format: delta
+
 spark:
   app_name: lakesense-ai
   master: "local[*]"
   shuffle_partitions: 8
+
+# ---------------------------------------------------------------------------
+# Source schema contracts, checked on every new raw file BEFORE it is ingested.
+# Missing required column -> file rejected. Unknown column -> kept + reported as drift.
+# ---------------------------------------------------------------------------
+contracts:
+  customers:
+    required: [customer_id, email, segment, signup_date, updated_at]
+    optional: [name, country]
+  products:
+    required: [product_id, category, list_price]
+    optional: [product_name]
+  orders:
+    required: [order_line_id, order_id, order_ts, customer_id, product_id, quantity, unit_price, status]
+    optional: [payment_method, country]
 
 # ---------------------------------------------------------------------------
 # Data-quality rules applied while promoting bronze -> silver.
@@ -61,4 +82,4 @@ anomaly:
 text_to_sql:
   max_rows: 200
   max_retries: 2             # self-correction attempts when generated SQL fails
-  allowed_tables: [daily_revenue, customer_rfm, product_performance, orders, customers, products]
+  allowed_tables: [daily_revenue, customer_rfm, product_performance, orders, customers, products, customer_history]

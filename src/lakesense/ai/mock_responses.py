@@ -121,6 +121,39 @@ def anomaly_explanation(ctx: dict[str, Any]) -> str:
     return "\n".join(out).strip()
 
 
+def schema_drift(ctx: dict[str, Any]) -> str:
+    import difflib
+
+    changes = ctx.get("changes", [])
+    if not changes:
+        return "No schema drift detected: every source file matched its contract."
+    out = []
+    for c in changes:
+        contract = ctx.get("contracts", {}).get(c["source"], {})
+        known = contract.get("required", []) + contract.get("optional", [])
+        files = ", ".join(f"`{f}`" for f in c["files"][:3]) + (" ..." if c["file_count"] > 3 else "")
+        if c["missing_required"]:
+            out += [f"### {c['source']}: missing required column(s) {', '.join(c['missing_required'])}",
+                    f"- **Files ({c['file_count']}):** {files} - **rejected**, nothing from them was loaded.",
+                    "- **Likely cause:** a different export (partner feed or a changed extract job).",
+                    "- **Action:** ask the source team to send the column, or agree a default and add a "
+                    "mapping before re-landing the file. The rest of the batch was unaffected.", ""]
+        for col in c["new_columns"]:
+            close = difflib.get_close_matches(col, known, n=1, cutoff=0.6)
+            hint = (f"It looks like a rename of `{close[0]}`: map it in silver instead of adding it."
+                    if close else "It does not match any known column, so it is probably a new attribute.")
+            out += [f"### {c['source']}: new column `{col}`",
+                    f"- **Files ({c['file_count']}):** {files} - **ingested**; the column is kept in bronze "
+                    "(schema evolution) but not used downstream yet.",
+                    f"- **Assessment:** {hint}",
+                    f"- **Action:** if it is needed, add `{col}` to the `{c['source']}` contract (optional) "
+                    "and select it in the silver cleaner; otherwise acknowledge and ignore.", ""]
+        if c["missing_optional"] and not c["missing_required"]:
+            out += [f"### {c['source']}: optional column(s) absent: {', '.join(c['missing_optional'])}",
+                    f"- **Files:** {files} - ingested; the values will be NULL.", ""]
+    return "\n".join(out).strip()
+
+
 def _n(q: str, default: int = 10) -> int:
     m = re.search(r"\b(\d{1,4})\b", q)
     return int(m.group(1)) if m else default
@@ -141,6 +174,10 @@ def text_to_sql(ctx: dict[str, Any]) -> str:
         return (f"SELECT order_date, revenue, orders, customers, avg_order_value "
                 f"FROM daily_revenue WHERE order_date = DATE '{day.group(1)}'")
     n = _n(q)
+    if "history" in q or "changed" in q or "changes" in q:
+        return ("SELECT customer_id, COUNT(*) AS versions, MIN(valid_from) AS first_seen, "
+                "MAX(valid_from) AS last_change FROM customer_history GROUP BY customer_id "
+                f"HAVING COUNT(*) > 1 ORDER BY versions DESC, last_change DESC LIMIT {n}")
     if "customer" in q and any(w in q for w in ("top", "best", "highest", "most")):
         return (f"SELECT customer_id, name, country, frequency, monetary, rfm_segment "
                 f"FROM customer_rfm ORDER BY monetary DESC LIMIT {n}")

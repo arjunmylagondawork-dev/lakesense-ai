@@ -89,6 +89,9 @@ with quality:
     if (reports / "dq_report.md").exists():
         st.subheader("AI incident report")
         st.markdown((reports / "dq_report.md").read_text())
+    if (reports / "schema_drift_report.md").exists():
+        st.subheader("Source schema drift")
+        st.markdown((reports / "schema_drift_report.md").read_text().split("\n", 3)[-1])
 
 with ask:
     from lakesense.ai.text_to_sql import TextToSQLAgent
@@ -100,7 +103,8 @@ with ask:
     st.write("Ask a business question. The LLM writes SQL, guardrails validate it, "
              "and it runs on a **read-only** warehouse connection.")
     examples = ["Top 10 customers by spend", "Revenue by category", "Monthly revenue",
-                "Revenue by country", "Cancellation and return rate by status", "RFM segment sizes"]
+                "Revenue by country", "Cancellation and return rate by status", "RFM segment sizes",
+                "Customers whose segment changed most"]
     pick = st.selectbox("Try an example", [""] + examples)
     question = st.text_input("Your question", value=pick)
     if question:

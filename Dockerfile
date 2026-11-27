@@ -18,4 +18,5 @@ COPY dags ./dags
 
 EXPOSE 8501
 # Build the lakehouse once, then serve the UI
+# Delta jars are fetched from Maven on first start and cached in the ivy volume
 CMD ["sh", "-c", "lakesense all && streamlit run app/streamlit_app.py --server.address=0.0.0.0 --server.port=8501"]

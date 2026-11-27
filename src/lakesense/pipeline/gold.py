@@ -12,6 +12,7 @@ from pyspark.sql import functions as F
 
 from lakesense.config import Settings
 from lakesense.logging_utils import get_logger
+from lakesense.storage import Lake
 
 log = get_logger(__name__)
 
@@ -92,10 +93,12 @@ def build_product_performance(orders: DataFrame, products: DataFrame) -> DataFra
 
 
 def run_gold(spark: SparkSession, settings: Settings) -> dict[str, int]:
-    p = settings.paths
-    orders = spark.read.parquet(str(p.layer("silver") / "orders"))
-    customers = spark.read.parquet(str(p.layer("silver") / "customers"))
-    products = spark.read.parquet(str(p.layer("silver") / "products"))
+    """Gold marts are small aggregates, so they are rebuilt from the full silver tables
+    each run (cheap, and always consistent with silver after MERGEs)."""
+    lake = Lake(spark, settings)
+    orders = lake.read("silver", "orders")
+    customers = lake.read("silver", "customers")
+    products = lake.read("silver", "products")
 
     marts = {
         "daily_revenue": build_daily_revenue(orders),
@@ -104,8 +107,7 @@ def run_gold(spark: SparkSession, settings: Settings) -> dict[str, int]:
     }
     counts = {}
     for name, df in marts.items():
-        target = str(p.layer("gold") / name)
-        df.write.mode("overwrite").parquet(target)
-        counts[name] = spark.read.parquet(target).count()
+        lake.write(df, "gold", name, "overwrite")
+        counts[name] = lake.read("gold", name).count()
         log.info("gold.%s -> %d rows", name, counts[name])
     return counts

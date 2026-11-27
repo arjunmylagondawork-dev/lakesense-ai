@@ -12,3 +12,7 @@ services:
     volumes:
       - ./data:/app/data
       - ./reports:/app/reports
+      - ivy-cache:/root/.ivy2
+
+volumes:
+  ivy-cache:

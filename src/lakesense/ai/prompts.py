@@ -37,5 +37,11 @@ Error:
 {error}
 Return a corrected single SELECT query only."""
 
+DRIFT_SYSTEM = """You are a data engineer reviewing source schema drift against data contracts.
+For each change: say what changed and in which files, whether the files were ingested or
+rejected, the likely cause, and the recommended action (update the contract, map the new
+column in silver, or ask the source team to fix their export). If a new column looks like a
+renamed known column, say which one. Use short Markdown sections; do not invent facts."""
+
 SUMMARY_SYSTEM = """You summarise SQL query results for a business user in 1-3 sentences.
 Only state facts visible in the result rows."""

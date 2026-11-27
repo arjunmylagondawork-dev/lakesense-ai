@@ -12,11 +12,12 @@ import duckdb
 
 from lakesense.config import Settings
 from lakesense.logging_utils import get_logger
+from lakesense.storage import active_parquet_files
 
 log = get_logger(__name__)
 
 GOLD = ["daily_revenue", "customer_rfm", "product_performance"]
-SILVER = ["orders", "customers", "products"]
+SILVER = ["orders", "customers", "products", "customer_history"]
 
 
 def publish(settings: Settings) -> Path:
@@ -27,12 +28,20 @@ def publish(settings: Settings) -> Path:
     with duckdb.connect(str(tmp)) as con:
         for layer, tables in (("gold", GOLD), ("silver", SILVER)):
             for t in tables:
-                src = settings.paths.layer(layer) / t
-                glob = (src / "**" / "*.parquet").as_posix()
-                drop_cols = "EXCLUDE (_source_file, _ingest_ts, _batch_id)" if layer == "silver" else ""
+                files = active_parquet_files(settings.paths.layer(layer) / t)
+                if not files:
+                    log.warning("warehouse.%s: no data files, skipped", t)
+                    continue
+                file_list = "[" + ", ".join(f"'{f}'" for f in files) + "]"
+                lineage = {"_source_file", "_ingest_ts", "_batch_id"}
+                cols = [r[0] for r in con.execute(
+                    f"DESCRIBE SELECT * FROM read_parquet({file_list}, hive_partitioning = true, "
+                    f"union_by_name = true)").fetchall()]
+                drop = [c for c in cols if c in lineage]
+                exclude = f"EXCLUDE ({', '.join(drop)})" if drop else ""
                 con.execute(
-                    f"CREATE TABLE {t} AS SELECT * {drop_cols} "
-                    f"FROM read_parquet('{glob}', hive_partitioning = true)"
+                    f"CREATE TABLE {t} AS SELECT * {exclude} "
+                    f"FROM read_parquet({file_list}, hive_partitioning = true, union_by_name = true)"
                 )
                 n = con.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
                 log.info("warehouse.%s <- %s rows", t, n)
